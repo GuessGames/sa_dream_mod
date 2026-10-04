@@ -8,6 +8,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
@@ -20,8 +21,19 @@ using System.Threading;
 using System.Windows.Forms;
 using Microsoft.Win32;
 
-[assembly: System.Reflection.AssemblyTitle("CoopAndreas Manager")]
-[assembly: System.Reflection.AssemblyVersion("1.1.0.0")]
+#if PLAYER
+[assembly: System.Reflection.AssemblyTitle("SA Dream Mod Launcher")]
+[assembly: System.Reflection.AssemblyDescription("Installs, updates and starts SA Dream Mod (GTA San Andreas co-op)")]
+#else
+[assembly: System.Reflection.AssemblyTitle("SA Dream Mod Developer Manager")]
+[assembly: System.Reflection.AssemblyDescription("Builds, installs, tests and publishes SA Dream Mod (GTA San Andreas co-op)")]
+#endif
+[assembly: System.Reflection.AssemblyProduct("SA Dream Mod")]
+[assembly: System.Reflection.AssemblyCompany("GuessGames")]
+[assembly: System.Reflection.AssemblyCopyright("GPL-3.0, based on CoopAndreas by Tornamic")]
+[assembly: System.Reflection.AssemblyVersion("1.2.0.0")]
+[assembly: System.Reflection.AssemblyFileVersion("1.2.0.0")]
+[assembly: System.Reflection.AssemblyInformationalVersion("1.2.0")]
 
 namespace CoopManager
 {
@@ -1069,14 +1081,14 @@ namespace CoopManager
     }
 
     // ------------------------------------------------------------------ main window
-    class DevForm : Form
+    class DevForm : GtaForm
     {
         readonly Settings settings = Settings.Load();
         Installer installer;
         readonly Dictionary<Control, string> texts = new Dictionary<Control, string>();
         volatile bool busy;
 
-        TabControl tabs;
+        GtaTabs tabs;
         TextBox tbGame, tbSrc, tbZip, tbRelRepo, tbRelDir, tbNick, tbIp, tbPort, tbNick1, tbNick2, tbSerial, tbFilter, tbOutput, tbLog;
         Label lbExe, lbMod, lbPkg, lbBackup, lbPcId, lbServer, lbDev, lbUpdates;
         RadioButton rbPlayer, rbDev;
@@ -1093,22 +1105,22 @@ namespace CoopManager
         {
             L.Uk = settings.Ukrainian;
             installer = new Installer(settings, Log);
-            Font = new Font("Segoe UI", 9.5f);
+            Font = Theme.Base(9.5f);
+            Dim = 175;
             ClientSize = new Size(900, 720);
             MinimumSize = new Size(760, 600);
             StartPosition = FormStartPosition.CenterScreen;
             try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
 
-            var header = Theme.HeaderPanel(this, "SA Dream Mod · Developer", "build · install · test · publish", 66);
-            btnLang = new Button { Anchor = AnchorStyles.Top | AnchorStyles.Right, Size = new Size(110, 30), Location = new Point(ClientSize.Width - 126, 18), Tag = "header" };
-            Theme.StyleButton(btnLang, Color.FromArgb(52, 56, 70), Color.White);
+            var header = Theme.HeaderPanel(this, "SA Dream Mod · Developer", "build · install · test · publish", 76);
+            btnLang = new GtaButton { Anchor = AnchorStyles.Top | AnchorStyles.Right, Size = new Size(110, 30), Location = new Point(ClientSize.Width - 126, 18), Tag = "header" };
             btnLang.Click += delegate { L.Uk = !L.Uk; settings.Ukrainian = L.Uk; settings.Save(); ApplyTexts(); RefreshStatus(); };
             Reg(btnLang, "lang");
             header.Controls.Add(btnLang);
 
-            ClientSize = new Size(ClientSize.Width, ClientSize.Height + 34);
-            tabs = new TabControl { Location = new Point(6, 72), Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right };
-            tabs.Size = new Size(ClientSize.Width - 12, ClientSize.Height - 78);
+            ClientSize = new Size(ClientSize.Width, ClientSize.Height + 44);
+            tabs = new GtaTabs { Location = new Point(8, 82), Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right };
+            tabs.Size = new Size(ClientSize.Width - 16, ClientSize.Height - 88);
             Controls.Add(tabs);
 
             BuildInstallTab();
@@ -1123,8 +1135,8 @@ namespace CoopManager
             logTimer.Tick += delegate { PollLog(); };
             logTimer.Start();
             // the server keeps running after the manager is closed (stop it in the server panel)
-            BackColor = Theme.Back;
             Theme.Apply(this);
+            LoadArt(settings.GameDir, 0);
             Shown += delegate { if (settings.PlayerMode) RunBusy(() => CheckUpdates()); };
         }
 
@@ -1137,7 +1149,7 @@ namespace CoopManager
         }
         Label Lbl(Control parent, string key, int x, int y, int w = 150)
         {
-            var l = new Label { Location = new Point(x, y + 3), AutoSize = false, Size = new Size(w, 22) };
+            var l = new Label { Location = new Point(x, y + 3), AutoSize = false, Size = new Size(w, 22), AutoEllipsis = true };
             if (key != null) Reg(l, key);
             parent.Controls.Add(l);
             return l;
@@ -1148,7 +1160,7 @@ namespace CoopManager
 
         Button Btn(Control parent, string key, int x, int y, int w, EventHandler click)
         {
-            var b = new Button { Location = new Point(x, y), Size = new Size(w, 32) };
+            var b = new GtaButton { Location = new Point(x, y), Size = new Size(w, 32) };
             if (PrimaryKeys.Contains(key)) b.Tag = "primary";
             else if (PlayKeys.Contains(key)) b.Tag = "play";
             else if (DangerKeys.Contains(key)) b.Tag = "danger";
@@ -1157,18 +1169,17 @@ namespace CoopManager
             parent.Controls.Add(b);
             return b;
         }
-        GroupBox Group(Control parent, string key, int x, int y, int w, int h)
+        Panel Group(Control parent, string key, int x, int y, int w, int h)
         {
-            var g = new GroupBox { Location = new Point(x, y), Size = new Size(w, h), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
+            var g = new GtaCard { Location = new Point(x, y), Size = new Size(w, h), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
             Reg(g, key);
             parent.Controls.Add(g);
             return g;
         }
-        TabPage Page(string key)
+        Panel Page(string key)
         {
-            var p = new TabPage { Padding = new Padding(8), UseVisualStyleBackColor = true };
+            var p = tabs.AddPage();
             Reg(p, key);
-            tabs.TabPages.Add(p);
             return p;
         }
 
@@ -1326,7 +1337,7 @@ namespace CoopManager
             if (lbExe == null) return;
             installer = new Installer(settings, Log);
             lbExe.Text = installer.ExeState();
-            lbExe.ForeColor = lbExe.Text == L.T("exeOk") ? Color.DarkGreen : Color.DarkRed;
+            lbExe.ForeColor = lbExe.Text == L.T("exeOk") ? Theme.Ok : Theme.Danger;
             lbMod.Text = installer.IsInstalled ? L.F("modInstalled", installer.InstalledVersion) : L.T("modNotInstalled");
             if (settings.PlayerMode)
             {
@@ -1339,8 +1350,8 @@ namespace CoopManager
                 lbPkg.Text = File.Exists(dll) ? L.F("pkgReady", "build " + File.GetLastWriteTime(dll).ToString("yyyy-MM-dd HH:mm")) : L.T("buildMissing");
             }
             lbBackup.Text = Directory.Exists(installer.BackupDir) ? L.T("backupFound") : "";
-            lbBackup.ForeColor = SystemColors.ControlText;
-            if (Directory.Exists(settings.GameDir) && !installer.IsGameDirWritable()) { lbBackup.Text = L.T("writableNo"); lbBackup.ForeColor = Color.DarkRed; }
+            lbBackup.ForeColor = Theme.Text;
+            if (Directory.Exists(settings.GameDir) && !installer.IsGameDirWritable()) { lbBackup.Text = L.T("writableNo"); lbBackup.ForeColor = Theme.Danger; }
 
             var git = new Git(settings);
             bool dev = git.RepoExists;
@@ -1357,7 +1368,7 @@ namespace CoopManager
             var p = Page("tabLaunch");
             var gs = Group(p, "serial", 8, 6, 860, 130);
             Lbl(gs, "pcid", 12, 22, 120);
-            lbPcId = new Label { Location = new Point(135, 25), AutoSize = true, Font = new Font("Consolas", 10f, FontStyle.Bold) };
+            lbPcId = new Label { Location = new Point(135, 25), AutoSize = true, Font = new Font("Consolas", 10f, FontStyle.Bold), ForeColor = Theme.Warn };
             gs.Controls.Add(lbPcId);
             try { lbPcId.Text = "/gen " + Serial.GetPcId(); } catch (Exception ex) { lbPcId.Text = ex.Message; }
             Btn(gs, "copyCmd", 330, 18, 170, delegate { Clipboard.SetText(lbPcId.Text); });
@@ -1606,72 +1617,438 @@ namespace CoopManager
         }
     }
 
-    // ------------------------------------------------------------------ look & feel shared by both editions
+    // ------------------------------------------------------------------ look & feel shared by both editions: GTA San Andreas menu style
+    // The background art is read from the player's own game (models\txd\LOADSCS.txd); nothing from the game is shipped.
     static class Theme
     {
-        public static readonly Color Header = Color.FromArgb(28, 30, 38);
-        public static readonly Color HeaderText = Color.White;
-        public static readonly Color HeaderSub = Color.FromArgb(170, 176, 190);
-        public static readonly Color Back = Color.FromArgb(243, 244, 247);
-        public static readonly Color Card = Color.White;
-        public static readonly Color Text = Color.FromArgb(30, 32, 40);
-        public static readonly Color Muted = Color.FromArgb(105, 110, 125);
-        public static readonly Color Accent = Color.FromArgb(0, 103, 192);
-        public static readonly Color Play = Color.FromArgb(16, 137, 62);
-        public static readonly Color Danger = Color.FromArgb(196, 43, 28);
-        public static readonly Color Neutral = Color.FromArgb(226, 229, 235);
-        public static readonly Color Ok = Color.FromArgb(16, 124, 16);
-        public static readonly Color Warn = Color.FromArgb(202, 80, 16);
+        // text colours on dark backgrounds, taken from the game's HUD
+        public static readonly Color Back = Color.FromArgb(8, 8, 10);
+        public static readonly Color Text = Color.FromArgb(235, 235, 235);
+        public static readonly Color Muted = Color.FromArgb(160, 172, 190);
+        public static readonly Color Accent = Color.FromArgb(172, 203, 241);   // HUD light blue
+        public static readonly Color Ok = Color.FromArgb(124, 204, 98);
+        public static readonly Color Warn = Color.FromArgb(226, 192, 99);
+        public static readonly Color Danger = Color.FromArgb(238, 84, 76);
+        // button fills
+        public static readonly Color FillBlue = Color.FromArgb(50, 60, 127);    // HUD dark blue
+        public static readonly Color FillGreen = Color.FromArgb(54, 104, 44);   // money green
+        public static readonly Color FillRed = Color.FromArgb(150, 22, 26);     // HUD red
+        public static readonly Color FieldBack = Color.FromArgb(18, 20, 27);
+        public static readonly Color LogBack = Color.FromArgb(10, 11, 14);
 
-        public static Font Base(float size = 10f, FontStyle style = FontStyle.Regular) { return new Font("Segoe UI", size, style); }
-        public static Font Semi(float size) { return new Font("Segoe UI Semibold", size); }
-
-        public static void StyleButton(Button b, Color back, Color fore)
+        static string baseFamily, titleFamily;
+        static bool HasFont(string name)
         {
-            b.FlatStyle = FlatStyle.Flat;
-            b.FlatAppearance.BorderSize = 0;
-            b.FlatAppearance.MouseOverBackColor = ControlPaint.Light(back, 0.15f);
-            b.FlatAppearance.MouseDownBackColor = ControlPaint.Dark(back, 0.05f);
-            b.BackColor = back;
-            b.ForeColor = fore;
-            b.Cursor = Cursors.Hand;
-            b.UseVisualStyleBackColor = false;
+            foreach (var f in FontFamily.Families) if (f.Name.Equals(name, StringComparison.OrdinalIgnoreCase)) return true;
+            return false;
+        }
+        static bool Bahn { get { if (baseFamily == null) baseFamily = HasFont("Bahnschrift") && HasFont("Bahnschrift SemiBold") ? "Bahnschrift" : "Segoe UI"; return baseFamily == "Bahnschrift"; } }
+
+        public static Font Base(float size = 10f, FontStyle style = FontStyle.Regular) { return new Font(Bahn ? "Bahnschrift" : "Segoe UI", size, style); }
+        public static Font Semi(float size) { return new Font(Bahn ? "Bahnschrift SemiBold" : "Segoe UI Semibold", size); }
+        // headings in the spirit of the game's Pricedown font: heavy condensed type with a black outline (Impact has Cyrillic)
+        public static Font Title(float size)
+        {
+            if (titleFamily == null) titleFamily = HasFont("Impact") ? "Impact" : "Arial Black";
+            return new Font(titleFamily, size);
         }
 
-        // flat neutral buttons + readable fonts everywhere; buttons tagged "primary"/"play"/"danger" get colors
+        static readonly Bitmap measureBmp = new Bitmap(1, 1);
+        public static GraphicsPath TextPath(string text, Font font, RectangleF box, StringFormat sf)
+        {
+            var p = new GraphicsPath();
+            p.AddString(text ?? "", font.FontFamily, (int)font.Style, font.SizeInPoints * 96f / 72f, box, sf);
+            return p;
+        }
+        public static SizeF MeasureOutlined(string text, Font font, int outline)
+        {
+            using (var p = TextPath(text, font, new RectangleF(0, 0, 4000, 1000), StringFormat.GenericTypographic))
+            {
+                var b = p.GetBounds();
+                if (b.Width <= 0) return new SizeF(outline * 2, font.Height);
+                return new SizeF(b.Right + outline * 2 + 2, Math.Max(b.Bottom, font.Height * 0.9f) + outline * 2 + 2);
+            }
+        }
+        // black outline + fill, like all text in the game
+        public static void DrawOutlined(Graphics g, string text, Font font, Color color, RectangleF box, int outline, StringFormat sf)
+        {
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            using (var p = TextPath(text, font, box, sf))
+            {
+                if (outline > 0)
+                    using (var pen = new Pen(Color.Black, outline * 2) { LineJoin = LineJoin.Round })
+                        g.DrawPath(pen, p);
+                using (var br = new SolidBrush(color)) g.FillPath(br, p);
+            }
+        }
+
+        // dark fields and transparent labels everywhere; buttons tagged "primary"/"play"/"danger" are drawn in HUD colours
         public static void Apply(Control root)
         {
             foreach (Control c in root.Controls)
             {
-                var b = c as Button;
-                if (b != null)
+                if (c is GtaButton || c is OutlineLabel) { }
+                else if (c is Label || c is CheckBox || c is RadioButton) c.BackColor = Color.Transparent;
+                else if (c is TextBox)
                 {
-                    string tag = b.Tag as string;
-                    if (tag == "primary") StyleButton(b, Accent, Color.White);
-                    else if (tag == "play") StyleButton(b, Play, Color.White);
-                    else if (tag == "danger") StyleButton(b, Danger, Color.White);
-                    else if (tag != "header") StyleButton(b, Neutral, Text);
+                    var t = (TextBox)c;
+                    t.BorderStyle = BorderStyle.FixedSingle;
+                    t.BackColor = t.Multiline ? LogBack : FieldBack;
+                    t.ForeColor = t.Multiline ? Color.Gainsboro : Text;
                 }
-                else if (c is GroupBox) { c.ForeColor = Text; c.Font = Semi(10f); foreach (Control cc in c.Controls) cc.Font = Base(9.75f); }
-                else if (c is TabPage) c.BackColor = Back;
+                else if (c is ListBox) { c.BackColor = FieldBack; c.ForeColor = Text; ((ListBox)c).BorderStyle = BorderStyle.FixedSingle; }
+                else if (c is ComboBox) { var cb = (ComboBox)c; cb.FlatStyle = FlatStyle.Flat; cb.BackColor = FieldBack; cb.ForeColor = Text; }
                 Apply(c);
             }
         }
 
         public static Panel HeaderPanel(Form f, string title, string subtitle, int height)
         {
-            var h = new Panel { Dock = DockStyle.Top, Height = height, BackColor = Header };
-            h.Controls.Add(new Label { Text = title, ForeColor = HeaderText, Font = Semi(17f), AutoSize = true, Location = new Point(18, 10), BackColor = Header });
-            h.Controls.Add(new Label { Text = subtitle, ForeColor = HeaderSub, Font = Base(9.5f), AutoSize = true, Location = new Point(20, 44), BackColor = Header });
+            var h = new Panel { Dock = DockStyle.Top, Height = height, BackColor = Color.Transparent };
+            var t = new OutlineLabel { Text = title, ForeColor = Color.White, Font = Title(25f), Outline = 4, Location = new Point(12, 2) };
+            h.Controls.Add(t);
+            h.Controls.Add(new Label { Text = subtitle, ForeColor = Accent, Font = Semi(10f), AutoSize = true, Location = new Point(18, Math.Max(height - 24, t.PreferredSize.Height - 2)), BackColor = Color.Transparent });
             f.Controls.Add(h);
             return h;
+        }
+    }
+
+    // loading screens straight from the installed game: LOADSCS.txd holds 512x512 DXT1 textures
+    static class GtaArt
+    {
+        public static List<Bitmap> LoadScreens(string gameDir)
+        {
+            var list = new List<Bitmap>();
+            try
+            {
+                string path = Path.Combine(gameDir ?? "", @"models\txd\LOADSCS.txd");
+                if (!File.Exists(path)) return list;
+                byte[] d = File.ReadAllBytes(path);
+                int pos = 28; // texture dictionary header + its struct
+                while (pos + 24 <= d.Length && BitConverter.ToInt32(d, pos) == 0x15)
+                {
+                    int size = BitConverter.ToInt32(d, pos + 4);
+                    int s = pos + 24; // texture native header + its struct header
+                    if (s + 92 > d.Length) break;
+                    string name = Encoding.ASCII.GetString(d, s + 8, 32);
+                    int z = name.IndexOf('\0');
+                    if (z >= 0) name = name.Substring(0, z);
+                    string fourcc = Encoding.ASCII.GetString(d, s + 76, 4);
+                    int w = BitConverter.ToUInt16(d, s + 80), h = BitConverter.ToUInt16(d, s + 82);
+                    int n = BitConverter.ToInt32(d, s + 88);
+                    // loadsc0 is the legal notice
+                    if (name.StartsWith("loadsc", StringComparison.OrdinalIgnoreCase) && name != "loadsc0" && fourcc == "DXT1" && w % 4 == 0 && h % 4 == 0 &&
+                        n >= w * h / 2 && s + 92 + n <= d.Length)
+                        list.Add(DecodeDxt1(d, s + 92, w, h));
+                    pos += 12 + size;
+                }
+            }
+            catch { }
+            return list;
+        }
+
+        static int Rgb(int r, int g, int b) { return unchecked((int)0xFF000000) | r << 16 | g << 8 | b; }
+
+        static Bitmap DecodeDxt1(byte[] d, int p, int w, int h)
+        {
+            var px = new int[w * h];
+            var c = new int[4];
+            for (int by = 0; by < h; by += 4)
+                for (int bx = 0; bx < w; bx += 4, p += 8)
+                {
+                    int a = d[p] | d[p + 1] << 8, b = d[p + 2] | d[p + 3] << 8;
+                    uint bits = BitConverter.ToUInt32(d, p + 4);
+                    int r0 = (a >> 11 & 31) * 255 / 31, g0 = (a >> 5 & 63) * 255 / 63, b0 = (a & 31) * 255 / 31;
+                    int r1 = (b >> 11 & 31) * 255 / 31, g1 = (b >> 5 & 63) * 255 / 63, b1 = (b & 31) * 255 / 31;
+                    c[0] = Rgb(r0, g0, b0);
+                    c[1] = Rgb(r1, g1, b1);
+                    if (a > b)
+                    {
+                        c[2] = Rgb((2 * r0 + r1) / 3, (2 * g0 + g1) / 3, (2 * b0 + b1) / 3);
+                        c[3] = Rgb((r0 + 2 * r1) / 3, (g0 + 2 * g1) / 3, (b0 + 2 * b1) / 3);
+                    }
+                    else
+                    {
+                        c[2] = Rgb((r0 + r1) / 2, (g0 + g1) / 2, (b0 + b1) / 2);
+                        c[3] = Rgb(0, 0, 0);
+                    }
+                    for (int j = 0; j < 16; j++)
+                        px[(by + (j >> 2)) * w + bx + (j & 3)] = c[(bits >> (2 * j)) & 3];
+                }
+            var bmp = new Bitmap(w, h, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+            var bd = bmp.LockBits(new Rectangle(0, 0, w, h), System.Drawing.Imaging.ImageLockMode.WriteOnly, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+            Marshal.Copy(px, 0, bd.Scan0, px.Length);
+            bmp.UnlockBits(bd);
+            return bmp;
+        }
+    }
+
+    // window with a loading screen behind everything; children are transparent or translucent black boxes
+    class GtaForm : Form
+    {
+        List<Bitmap> art = new List<Bitmap>();
+        int artIndex;
+        Bitmap composed;
+        System.Windows.Forms.Timer artTimer;
+        // darkening of the art: the whole window, plus an extra dark column on the left (ColumnWidth 0 = none)
+        protected int Dim = 120, ColumnWidth = 0, ColumnDim = 190;
+
+        public GtaForm()
+        {
+            BackColor = Theme.Back;
+            ForeColor = Theme.Text;
+            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.ResizeRedraw, true);
+        }
+
+        // WS_EX_COMPOSITED: the transparent children are painted in one pass, without flicker
+        protected override CreateParams CreateParams { get { var cp = base.CreateParams; cp.ExStyle |= 0x02000000; return cp; } }
+
+        // a random loading screen; rotateMs > 0 switches to the next one now and then, like the game does
+        protected void LoadArt(string gameDir, int rotateMs)
+        {
+            foreach (var b in art) b.Dispose();
+            art = GtaArt.LoadScreens(gameDir);
+            artIndex = art.Count > 0 ? new Random().Next(art.Count) : 0;
+            Recompose();
+            if (rotateMs > 0 && artTimer == null)
+            {
+                artTimer = new System.Windows.Forms.Timer { Interval = rotateMs };
+                artTimer.Tick += delegate { if (art.Count > 1) { artIndex = (artIndex + 1) % art.Count; Recompose(); } };
+                artTimer.Start();
+                FormClosed += delegate { artTimer.Stop(); };
+            }
+        }
+
+        void Recompose()
+        {
+            if (composed != null) { composed.Dispose(); composed = null; }
+            Invalidate(true);
+        }
+
+        protected override void OnPaintBackground(PaintEventArgs e)
+        {
+            if (ClientSize.Width <= 0 || ClientSize.Height <= 0) return;
+            if (composed == null || composed.Size != ClientSize) Compose();
+            e.Graphics.DrawImageUnscaled(composed, 0, 0);
+        }
+
+        // what lies behind a child control: the art plus the translucent boxes it sits in (WinForms' own
+        // transparency repaints the parent through the control and leaked other labels' text into the buttons)
+        public void PaintBackdrop(Control c, Graphics g)
+        {
+            if (ClientSize.Width <= 0 || ClientSize.Height <= 0 || c.Parent == null) return;
+            if (composed == null || composed.Size != ClientSize) Compose();
+            Point p = PointToClient(c.Parent.PointToScreen(c.Location));
+            g.DrawImage(composed, new Rectangle(0, 0, c.Width, c.Height), new Rectangle(p.X, p.Y, c.Width, c.Height), GraphicsUnit.Pixel);
+            var boxes = new List<Color>();
+            for (Control a = c.Parent; a != null && a != this; a = a.Parent)
+                if (a.BackColor.A > 0 && a.BackColor.A < 255) boxes.Insert(0, a.BackColor);
+            foreach (var col in boxes)
+                using (var br = new SolidBrush(col)) g.FillRectangle(br, 0, 0, c.Width, c.Height);
+        }
+
+        void Compose()
+        {
+            if (composed != null) composed.Dispose();
+            int cw = ClientSize.Width, ch = ClientSize.Height;
+            composed = new Bitmap(cw, ch);
+            using (var g = Graphics.FromImage(composed))
+            {
+                g.Clear(Theme.Back);
+                if (art.Count > 0)
+                {
+                    // the textures are square but the game shows them at 4:3; anchored right so the character stays visible
+                    int h = ch, w = h * 4 / 3;
+                    if (w < cw) { w = cw; h = w * 3 / 4; }
+                    g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                    g.DrawImage(art[artIndex], new Rectangle(cw - w, (ch - h) / 2, w, h));
+                }
+                else
+                {
+                    // no game folder yet: a San Andreas sunset
+                    using (var br = new LinearGradientBrush(new Rectangle(0, -1, cw, ch + 2), Color.FromArgb(222, 128, 52), Color.FromArgb(34, 18, 46), 90f))
+                        g.FillRectangle(br, 0, 0, cw, ch);
+                }
+                using (var br = new SolidBrush(Color.FromArgb(Dim, 0, 0, 0))) g.FillRectangle(br, 0, 0, cw, ch);
+                if (ColumnWidth > 0)
+                {
+                    using (var br = new SolidBrush(Color.FromArgb(ColumnDim, 0, 0, 0))) g.FillRectangle(br, 0, 0, ColumnWidth, ch);
+                    using (var br = new LinearGradientBrush(new Rectangle(ColumnWidth - 1, 0, 92, ch), Color.FromArgb(ColumnDim, 0, 0, 0), Color.FromArgb(0, 0, 0, 0), 0f))
+                        g.FillRectangle(br, ColumnWidth, 0, 90, ch);
+                }
+            }
+        }
+    }
+
+    // menu button: translucent black box or a HUD colour, outlined text, light blue frame under the mouse
+    class GtaButton : Button
+    {
+        bool hover, down;
+
+        public GtaButton()
+        {
+            SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint |
+                     ControlStyles.SupportsTransparentBackColor | ControlStyles.ResizeRedraw, true);
+            BackColor = Color.Transparent;
+            ForeColor = Color.White;
+            Cursor = Cursors.Hand;
+            Font = Theme.Semi(10f);
+        }
+
+        protected override void OnMouseEnter(EventArgs e) { hover = true; Invalidate(); base.OnMouseEnter(e); }
+        protected override void OnMouseLeave(EventArgs e) { hover = down = false; Invalidate(); base.OnMouseLeave(e); }
+        protected override void OnMouseDown(MouseEventArgs e) { down = true; Invalidate(); base.OnMouseDown(e); }
+        protected override void OnMouseUp(MouseEventArgs e) { down = false; Invalidate(); base.OnMouseUp(e); }
+        protected override void OnEnabledChanged(EventArgs e) { Invalidate(); base.OnEnabledChanged(e); }
+        protected override void OnTextChanged(EventArgs e) { Invalidate(); base.OnTextChanged(e); }
+
+        static Color Mix(Color a, Color b, float t)
+        {
+            return Color.FromArgb((int)(a.R + (b.R - a.R) * t), (int)(a.G + (b.G - a.G) * t), (int)(a.B + (b.B - a.B) * t));
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            var g = e.Graphics;
+            // Button is an opaque control (no background pass), so the backdrop is painted here
+            var form = FindForm() as GtaForm;
+            if (form != null) form.PaintBackdrop(this, g);
+            var r = new Rectangle(0, 0, Width, Height);
+            string kind = Tag as string;
+            bool coloured = kind == "primary" || kind == "play" || kind == "danger";
+            Color fill = kind == "primary" ? Theme.FillBlue : kind == "play" ? Theme.FillGreen : kind == "danger" ? Theme.FillRed : Color.Black;
+            int alpha = coloured ? 235 : (hover && Enabled ? 200 : 150);
+            if (!Enabled) { fill = Mix(fill, Color.FromArgb(40, 40, 40), 0.7f); alpha = coloured ? 170 : 110; }
+            else if (down) fill = Mix(fill, Color.Black, 0.25f);
+            else if (hover && coloured) fill = Mix(fill, Color.White, 0.15f);
+
+            using (var br = new LinearGradientBrush(new Rectangle(0, -1, Width, Height + 2), Color.FromArgb(alpha, Mix(fill, Color.White, coloured ? 0.18f : 0.08f)), Color.FromArgb(alpha, fill), 90f))
+                g.FillRectangle(br, r);
+            Color frame = hover && Enabled ? Theme.Accent : Color.FromArgb(coloured ? 70 : 90, Theme.Accent);
+            using (var pen = new Pen(frame, hover && Enabled ? 2 : 1)) g.DrawRectangle(pen, hover && Enabled ? new Rectangle(1, 1, Width - 2, Height - 2) : new Rectangle(0, 0, Width - 1, Height - 1));
+
+            Color fore = Enabled ? ForeColor : Color.FromArgb(140, 140, 140);
+            if (Font.SizeInPoints >= 12f)
+            {
+                using (var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
+                    Theme.DrawOutlined(g, Text, Font, fore, new RectangleF(2, 1, Width - 4, Height - 1), Font.SizeInPoints >= 15f ? 3 : 2, sf);
+            }
+            else
+            {
+                var flags = TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix;
+                var tr = new Rectangle(4, 0, Width - 8, Height);
+                TextRenderer.DrawText(g, Text, Font, new Rectangle(tr.X + 1, tr.Y + 1, tr.Width, tr.Height), Color.Black, flags);
+                TextRenderer.DrawText(g, Text, Font, tr, fore, flags);
+            }
+        }
+    }
+
+    // heading text with a black outline (game style); sizes itself to the text
+    class OutlineLabel : Label
+    {
+        public int Outline = 3;
+
+        public OutlineLabel()
+        {
+            SetStyle(ControlStyles.SupportsTransparentBackColor, true);
+            BackColor = Color.Transparent;
+            AutoSize = true;
+        }
+
+        public override Size GetPreferredSize(Size proposedSize)
+        {
+            var s = Theme.MeasureOutlined(Text, Font, Outline);
+            return new Size((int)Math.Ceiling(s.Width), (int)Math.Ceiling(s.Height));
+        }
+
+        protected override void OnPaintBackground(PaintEventArgs e)
+        {
+            var f = FindForm() as GtaForm;
+            if (f != null) f.PaintBackdrop(this, e.Graphics); else base.OnPaintBackground(e);
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            Theme.DrawOutlined(e.Graphics, Text, Font, ForeColor, new RectangleF(Outline, Outline, 4000, 1000), Outline, StringFormat.GenericTypographic);
+        }
+    }
+
+    // translucent black box with a thin light blue line on top, like the boxes of the game's menus; Text is drawn as its caption
+    class GtaCard : Panel
+    {
+        static readonly Font captionFont = Theme.Semi(10.5f);
+
+        public GtaCard()
+        {
+            SetStyle(ControlStyles.SupportsTransparentBackColor | ControlStyles.AllPaintingInWmPaint | ControlStyles.ResizeRedraw | ControlStyles.UserPaint, true);
+            BackColor = Color.FromArgb(150, 0, 0, 0);
+        }
+
+        protected override void OnTextChanged(EventArgs e) { Invalidate(); base.OnTextChanged(e); }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            base.OnPaint(e);
+            using (var br = new SolidBrush(Color.FromArgb(170, Theme.Accent))) e.Graphics.FillRectangle(br, 0, 0, Width, 2);
+            if (!string.IsNullOrEmpty(Text))
+                TextRenderer.DrawText(e.Graphics, Text.ToUpper(), captionFont, new Point(10, 4), Theme.Accent, TextFormatFlags.NoPrefix);
+        }
+    }
+
+    // tab strip made of menu buttons; the pages are transparent panels over the art
+    class GtaTabs : Panel
+    {
+        public readonly List<Panel> Pages = new List<Panel>();
+        readonly List<GtaButton> heads = new List<GtaButton>();
+        int selected;
+        const int StripHeight = 44;
+
+        public GtaTabs()
+        {
+            SetStyle(ControlStyles.SupportsTransparentBackColor, true);
+            BackColor = Color.Transparent;
+        }
+
+        public Panel AddPage()
+        {
+            int index = Pages.Count;
+            var head = new GtaButton { Location = new Point(index * 186, 0), Size = new Size(180, 36), Font = Theme.Title(13f) };
+            head.Click += delegate { SelectedIndex = index; };
+            heads.Add(head);
+            Controls.Add(head);
+            var page = new Panel
+            {
+                Location = new Point(0, StripHeight), Size = new Size(Width, Height - StripHeight), BackColor = Color.Transparent, Visible = index == 0,
+                Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
+            };
+            page.TextChanged += delegate { head.Text = page.Text.ToUpper(); };
+            Pages.Add(page);
+            Controls.Add(page);
+            UpdateHeads();
+            return page;
+        }
+
+        public int SelectedIndex
+        {
+            get { return selected; }
+            set
+            {
+                selected = value;
+                for (int i = 0; i < Pages.Count; i++) Pages[i].Visible = i == value;
+                UpdateHeads();
+            }
+        }
+
+        void UpdateHeads()
+        {
+            for (int i = 0; i < heads.Count; i++) { heads[i].Tag = i == selected ? "primary" : null; heads[i].Invalidate(); }
         }
     }
 
     // ------------------------------------------------------------------ server panel (both editions)
     // The server runs detached (cmd → server.log), so it keeps running when the launcher is closed;
     // the panel just tails the log and re-attaches to a running server.
-    class ServerPanel : Form
+    class ServerPanel : GtaForm
     {
         readonly Settings settings;
         readonly Installer installer;
@@ -1693,13 +2070,14 @@ namespace CoopManager
             useLocalIp = onUseLocalIp;
             Text = L.T("svTitle") + " — SA Dream Mod";
             Font = Theme.Base();
-            BackColor = Theme.Back;
+            Dim = 170;
             FormBorderStyle = FormBorderStyle.FixedSingle;
             MaximizeBox = false;
             StartPosition = FormStartPosition.CenterParent;
             ClientSize = new Size(620, 680);
             try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
             Theme.HeaderPanel(this, L.T("svTitle"), L.T("svSubtitle"), 72);
+            LoadArt(settings.GameDir, 0);
 
             int x = 18, w = ClientSize.Width - 36;
             var top = Card(x, 88, w, 96);
@@ -1709,33 +2087,33 @@ namespace CoopManager
             top.Controls.Add(lbPortCap);
             tbPort = new TextBox { Location = new Point(104, 53), Width = 70, Text = settings.Port.ToString(), Font = Theme.Base(10.5f), BorderStyle = BorderStyle.FixedSingle };
             top.Controls.Add(tbPort);
-            btnStart = new Button { Location = new Point(w - 330, 22), Size = new Size(316, 48), Tag = "play", Font = Theme.Semi(11.5f), Text = L.T("svStart") };
+            btnStart = new GtaButton { Location = new Point(w - 330, 22), Size = new Size(316, 48), Tag = "play", Font = Theme.Semi(11.5f), Text = L.T("svStart") };
             btnStart.Click += delegate { StartServer(); };
             top.Controls.Add(btnStart);
-            btnStop = new Button { Location = new Point(w - 330, 22), Size = new Size(316, 48), Tag = "danger", Font = Theme.Semi(11.5f), Text = L.T("svStop") };
+            btnStop = new GtaButton { Location = new Point(w - 330, 22), Size = new Size(316, 48), Tag = "danger", Font = Theme.Semi(11.5f), Text = L.T("svStop") };
             btnStop.Click += delegate { GameLauncher.StopServers(installer); RefreshState(); };
             top.Controls.Add(btnStop);
 
             var mid = Card(x, 196, w, 196);
-            lbAddrCap = new Label { Location = new Point(14, 10), AutoSize = true, Font = Theme.Semi(11f), Text = L.T("svAddresses") };
+            lbAddrCap = new OutlineLabel { Location = new Point(10, 6), Font = Theme.Title(13f), ForeColor = Theme.Accent, Outline = 2, Text = L.T("svAddresses") };
             mid.Controls.Add(lbAddrCap);
             lbAddresses = new ListBox { Location = new Point(14, 38), Size = new Size(w - 200, 110), Font = Theme.Base(10f), BorderStyle = BorderStyle.FixedSingle, IntegralHeight = false };
             mid.Controls.Add(lbAddresses);
-            btnCopy = new Button { Location = new Point(w - 176, 38), Size = new Size(162, 34), Tag = "primary", Text = L.T("svCopy") };
+            btnCopy = new GtaButton { Location = new Point(w - 176, 38), Size = new Size(162, 34), Tag = "primary", Text = L.T("svCopy") };
             btnCopy.Click += delegate { CopySelectedIp(); };
             mid.Controls.Add(btnCopy);
-            btnUseLocal = new Button { Location = new Point(w - 176, 80), Size = new Size(162, 50), Text = L.T("svUseLocal") };
+            btnUseLocal = new GtaButton { Location = new Point(w - 176, 80), Size = new Size(162, 50), Text = L.T("svUseLocal") };
             btnUseLocal.Click += delegate { if (useLocalIp != null) useLocalIp("127.0.0.1"); lbInfo.Text = "127.0.0.1"; };
             mid.Controls.Add(btnUseLocal);
             lbInfo = new Label { Location = new Point(14, 156), Size = new Size(w - 28, 24), ForeColor = Theme.Ok };
             mid.Controls.Add(lbInfo);
 
             var bottom = Card(x, 404, w, 258);
-            lbPlayersCap = new Label { Location = new Point(14, 10), AutoSize = true, Font = Theme.Semi(11f) };
+            lbPlayersCap = new OutlineLabel { Location = new Point(10, 6), Font = Theme.Title(13f), ForeColor = Theme.Accent, Outline = 2 };
             bottom.Controls.Add(lbPlayersCap);
             lbPlayers = new ListBox { Location = new Point(14, 38), Size = new Size(180, 206), Font = Theme.Base(10f), BorderStyle = BorderStyle.FixedSingle, IntegralHeight = false };
             bottom.Controls.Add(lbPlayers);
-            lbLogCap = new Label { Location = new Point(208, 10), AutoSize = true, Font = Theme.Semi(11f), Text = L.T("svLog") };
+            lbLogCap = new OutlineLabel { Location = new Point(204, 6), Font = Theme.Title(13f), ForeColor = Theme.Accent, Outline = 2, Text = L.T("svLog") };
             bottom.Controls.Add(lbLogCap);
             tbLog = new TextBox
             {
@@ -1757,7 +2135,7 @@ namespace CoopManager
 
         Panel Card(int x, int y, int w, int h)
         {
-            var c = new Panel { Location = new Point(x, y), Size = new Size(w, h), BackColor = Theme.Card };
+            var c = new GtaCard { Location = new Point(x, y), Size = new Size(w, h) };
             Controls.Add(c);
             return c;
         }
@@ -1923,7 +2301,7 @@ namespace CoopManager
     }
 
     // ------------------------------------------------------------------ simple launcher for players
-    class PlayerForm : Form
+    class PlayerForm : GtaForm
     {
         readonly Settings settings = Settings.Load();
         Installer installer;
@@ -1942,22 +2320,23 @@ namespace CoopManager
             installer = new Installer(settings, SetStatus);
             Text = "SA Dream Mod";
             Font = Theme.Base();
-            BackColor = Theme.Back;
             FormBorderStyle = FormBorderStyle.FixedSingle;
             MaximizeBox = false;
             StartPosition = FormStartPosition.CenterScreen;
-            ClientSize = new Size(540, 672);
+            ClientSize = new Size(1000, 672);
+            Dim = 25;
+            ColumnWidth = 540;
+            ColumnDim = 200;
             try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
 
             var header = Theme.HeaderPanel(this, L.T("pTitle"), L.T("pSubtitle"), 72);
             lbTitle = (Label)header.Controls[0];
             lbSub = (Label)header.Controls[1];
-            btnLang = new Button { Size = new Size(96, 30), Location = new Point(ClientSize.Width - 112, 20), Tag = "header", Font = Theme.Base(9.5f) };
-            Theme.StyleButton(btnLang, Color.FromArgb(52, 56, 70), Color.White);
+            btnLang = new GtaButton { Size = new Size(96, 30), Location = new Point(540 - 114, 20), Font = Theme.Semi(9.5f) };
             btnLang.Click += delegate { L.Uk = !L.Uk; settings.Ukrainian = L.Uk; settings.Save(); ApplyTexts(); RefreshState(); };
             header.Controls.Add(btnLang);
 
-            int x = 18, w = ClientSize.Width - 36;
+            int x = 18, w = ColumnWidth - 36;
 
             // --- game card
             cardGame = Card(x, 88, w, 172);
@@ -1977,7 +2356,7 @@ namespace CoopManager
             cardGame.Controls.Add(lbModState);
             cardGame.Controls.Add(lbUpdate);
 
-            btnMain = new Button { Location = new Point(x, 270), Size = new Size(w, 46), Tag = "primary", Font = Theme.Semi(12f) };
+            btnMain = new GtaButton { Location = new Point(x, 270), Size = new Size(w, 46), Tag = "primary", Font = Theme.Semi(12f) };
             btnMain.Click += delegate { OnMainButton(); };
             Controls.Add(btnMain);
             actionButtons.Add(btnMain);
@@ -2001,7 +2380,7 @@ namespace CoopManager
             btnHowKey = SmallButton(cardPlayer, 330, 153, 132);
             btnHowKey.Click += delegate { HowToGetKey(); };
 
-            btnPlay = new Button { Location = new Point(x, 536), Size = new Size(w, 56), Tag = "play", Font = Theme.Semi(15f) };
+            btnPlay = new GtaButton { Location = new Point(x, 536), Size = new Size(w, 56), Tag = "play", Font = Theme.Semi(15f) };
             btnPlay.Click += delegate { Play(); };
             Controls.Add(btnPlay);
             actionButtons.Add(btnPlay);
@@ -2031,6 +2410,7 @@ namespace CoopManager
             actionButtons.AddRange(new[] { btnRepair, btnUninstall });
 
             Theme.Apply(this);
+            LoadArt(settings.GameDir, 12000);
             ApplyTexts();
             RefreshState();
             Shown += delegate { RunBusy(CheckUpdates); };
@@ -2039,13 +2419,13 @@ namespace CoopManager
 
         Panel Card(int x, int y, int w, int h)
         {
-            var c = new Panel { Location = new Point(x, y), Size = new Size(w, h), BackColor = Theme.Card };
+            var c = new GtaCard { Location = new Point(x, y), Size = new Size(w, h) };
             Controls.Add(c);
             return c;
         }
         Label Caption(Control parent, int x, int y)
         {
-            var l = new Label { Location = new Point(x, y), AutoSize = true, Font = Theme.Semi(11f), ForeColor = Theme.Text };
+            var l = new OutlineLabel { Location = new Point(x - 4, y - 4), Font = Theme.Title(14f), ForeColor = Theme.Accent, Outline = 2 };
             parent.Controls.Add(l);
             return l;
         }
@@ -2063,7 +2443,7 @@ namespace CoopManager
         }
         Button SmallButton(Control parent, int x, int y, int w)
         {
-            var b = new Button { Location = new Point(x, y), Size = new Size(w, 30), Font = Theme.Base(9.5f) };
+            var b = new GtaButton { Location = new Point(x, y), Size = new Size(w, 30), Font = Theme.Base(9.5f) };
             parent.Controls.Add(b);
             return b;
         }
@@ -2221,6 +2601,7 @@ namespace CoopManager
                 if (d.ShowDialog() != DialogResult.OK) return;
                 settings.GameDir = d.SelectedPath;
                 settings.Save();
+                LoadArt(settings.GameDir, 12000);
                 RefreshState();
             }
         }
