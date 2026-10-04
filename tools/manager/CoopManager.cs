@@ -180,9 +180,37 @@ namespace CoopManager
                 string repo = FindRepoRoot(Path.GetDirectoryName(Application.ExecutablePath));
                 if (repo != null) { s.SourceDir = repo; s.PlayerMode = false; }
             }
+            if (!File.Exists(Path.Combine(s.GameDir, "gta_sa.exe")))
+            {
+                string found = FindGameDir();
+                if (found != null) s.GameDir = found;
+            }
+            if (!File.Exists(FilePath) && s.Nick == "Player") s.Nick = Environment.UserName;
             if (s.ReleaseDir.Length == 0 && s.SourceDir.Length > 0)
                 s.ReleaseDir = Path.Combine(Path.GetDirectoryName(s.SourceDir.TrimEnd('\\')), "release");
             return s;
+        }
+
+        // first run: look for the game in the usual places (Rockstar Launcher, Steam, retail, drive roots)
+        static string FindGameDir()
+        {
+            var candidates = new List<string>();
+            try
+            {
+                using (var k = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\WOW6432Node\Rockstar Games\GTA San Andreas\Installation"))
+                    if (k != null && k.GetValue("ExePath") is string) candidates.Add(Path.GetDirectoryName(((string)k.GetValue("ExePath")).Trim('"')));
+                using (var k = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\WOW6432Node\Valve\Steam"))
+                    if (k != null && k.GetValue("InstallPath") is string) candidates.Add(Path.Combine((string)k.GetValue("InstallPath"), @"steamapps\common\Grand Theft Auto San Andreas"));
+            }
+            catch { }
+            foreach (var drive in DriveInfo.GetDrives().Where(d => d.DriveType == DriveType.Fixed && d.IsReady))
+            {
+                string root = drive.RootDirectory.FullName;
+                foreach (var rel in new[] { "Grand Theft Auto San Andreas", "GTA San Andreas", @"Games\Grand Theft Auto San Andreas",
+                    @"Games\GTA San Andreas", @"Program Files (x86)\Rockstar Games\GTA San Andreas", @"Program Files\Rockstar Games\GTA San Andreas" })
+                    candidates.Add(Path.Combine(root, rel));
+            }
+            return candidates.FirstOrDefault(c => { try { return File.Exists(Path.Combine(c, "gta_sa.exe")); } catch { return false; } });
         }
 
         public static string FindRepoRoot(string dir)
@@ -347,8 +375,15 @@ namespace CoopManager
             return new FileInfo(exe).Length == Exe10UsSize ? L.T("exeOk") : L.T("exeBad");
         }
 
-        // gta_sa.exe 1.0 US is never distributed by us (Rockstar binary): it comes from the user's archive or folder
+        // gta_sa.exe 1.0 US: from the release package (exe\) or from the archive/folder set in the settings
         public string GetCompatibleExe()
+        {
+            string packaged = Path.Combine(PackageDir, @"exe\gta_sa.exe");
+            if (File.Exists(packaged) && new FileInfo(packaged).Length == Exe10UsSize) return packaged;
+            return GetCompatibleExeFromSettings();
+        }
+
+        public string GetCompatibleExeFromSettings()
         {
             string p = s.AdditionalZip;
             if (string.IsNullOrEmpty(p)) return null;
@@ -376,7 +411,7 @@ namespace CoopManager
             if (!File.Exists(Path.Combine(BuildDir, "CoopAndreasSA.dll"))) throw new Exception(L.T("buildMissing"));
             if (clean)
             {
-                foreach (var sub in new[] { "bin", "additional", "scm" })
+                foreach (var sub in new[] { "bin", "additional", "scm", "exe" })
                     if (Directory.Exists(Path.Combine(target, sub))) Directory.Delete(Path.Combine(target, sub), true);
             }
             Directory.CreateDirectory(Path.Combine(target, "bin"));
@@ -384,14 +419,19 @@ namespace CoopManager
             Directory.CreateDirectory(Path.Combine(target, "scm"));
             foreach (var name in new[] { "CoopAndreasSA.dll", "proxy.dll", "LaunchCoopAndreas.exe", "LaunchCoopAndreas.exe.manifest", "server.exe" })
                 File.Copy(Path.Combine(BuildDir, name), Path.Combine(target, "bin", name), true);
+            // the release repo is private (collaborators only), so the whole "additional" set goes in,
+            // including vorbisHooked.dll and gta_sa.exe 1.0 US
             foreach (var f in Directory.GetFiles(Path.Combine(s.SourceDir, @"dist\additional")))
-            {
-                // Rockstar's original vorbisFile.dll is never redistributed; it is recreated from the user's game on install
-                if (Path.GetFileName(f).Equals("vorbisHooked.dll", StringComparison.OrdinalIgnoreCase)) continue;
                 File.Copy(f, Path.Combine(target, "additional", Path.GetFileName(f)), true);
-            }
             foreach (var name in new[] { "main.scm", "script.img" })
                 File.Copy(Path.Combine(s.SourceDir, "scm", name), Path.Combine(target, "scm", name), true);
+            string exe = GetCompatibleExeFromSettings();
+            if (exe != null)
+            {
+                Directory.CreateDirectory(Path.Combine(target, "exe"));
+                File.Copy(exe, Path.Combine(target, @"exe\gta_sa.exe"), true);
+            }
+            else log("! gta_sa.exe 1.0 US not found (Settings → archive), the package goes without it");
             string mgr = File.Exists(ManagerBuildPath) ? ManagerBuildPath : Application.ExecutablePath;
             File.Copy(mgr, Path.Combine(target, "CoopAndreasManager.exe"), true);
 
@@ -828,9 +868,10 @@ namespace CoopManager
                 "Готові файли нашої збірки CoopAndreas. Встановлення й оновлення — через `CoopAndreasManager.exe`.\n\n" +
                 "1. Install Git for Windows / встановіть Git for Windows: https://git-scm.com/download/win\n" +
                 "2. Download / завантажте `CoopAndreasManager.exe` (open the file → Download raw file).\n" +
-                "3. Settings / Налаштування: game folder + archive or folder with `gta_sa.exe` 1.0 US.\n" +
-                "4. Install → Update and install / Встановлення → Оновити і встановити (git asks for your GitHub login once).\n\n" +
-                "- `gta_sa.exe` 1.0 US is NOT included / НЕ входить у реліз.\n" +
+                "3. Settings / Налаштування: check the game folder (found automatically) / перевірте теку гри (шукається автоматично).\n" +
+                "4. Install → Update and install / Встановлення → Оновити і встановити (git asks for your GitHub login once).\n" +
+                "5. Launch → Launch game / Запуск → Запустити гру.\n\n" +
+                "- `gta_sa.exe` 1.0 US is included and replaced automatically, the original is kept in `_coop_backup` / входить у реліз.\n" +
                 "- Source code of this version (GPL-3.0), available on request / код цієї версії за запитом: " + sourceUrl + "/tree/" + head + "\n" +
                 "- Based on [CoopAndreas](https://github.com/Tornamic/CoopAndreas) (GPL-3.0).\n", new UTF8Encoding(false));
 
