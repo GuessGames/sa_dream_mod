@@ -168,6 +168,20 @@ PACKET_HANDLER(ePacketType::VEHICLE_DRIVER_UPDATE, Packets::Vehicles::VehicleDri
 
     pNetworkVehicle->m_pVehicle->m_eDoorLock = pVehicleDriverUpdate->locked;
     pNetworkVehicle->m_playerDriverSnapshot = *pVehicleDriverUpdate;
+
+    // passengers hear the same station as the driver
+    CPlayerPed* pLocalPlayer = FindPlayerPed(0);
+    if (pLocalPlayer && pLocalPlayer->m_nPedFlags.bInVehicle && pLocalPlayer->m_pVehicle == pVehicle &&
+        pVehicleDriverUpdate->radioStation >= 0 && AudioEngine.GetCurrentRadioStationID() != pVehicleDriverUpdate->radioStation)
+    {
+        static uint32_t lastRetune = 0;
+        if (GetTickCount() - lastRetune > 1000)
+        {
+            lastRetune = GetTickCount();
+            AudioEngine.RetuneRadio(static_cast<char>(pVehicleDriverUpdate->radioStation));
+            logger::info("[radio] tuned to the driver's station %d", pVehicleDriverUpdate->radioStation);
+        }
+    }
 }
 
 PACKET_HANDLER(ePacketType::VEHICLE_ENTER, Packets::Vehicles::VehicleEnter* pVehicleEnter)

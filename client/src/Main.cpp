@@ -216,11 +216,8 @@ public:
                      lastPedSyncTickRate = tickCount;
                  }
 
-                if (CLocalPlayer::m_bIsHost && tickCount > lastWeatherTimeSyncTickRate + 2000)
-                {
-                    CWeatherSync::SyncCurrentState();
-                    lastWeatherTimeSyncTickRate = tickCount;
-                }
+                CWeatherSync::Process();
+                CWeatherSync::ApplyClient();
                 CNetworkVehicleManager::UpdateDamageSync();
 
                 CAimSync::ProcessSyncing();

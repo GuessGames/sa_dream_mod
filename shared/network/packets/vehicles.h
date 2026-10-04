@@ -188,6 +188,8 @@ public:
 
     float planeGearState{};
     eDoorLock locked{};
+    // the driver's radio station, passengers tune to it
+    int radioStation = -1;
 
 private:
     template <typename Stream>
@@ -277,6 +279,7 @@ private:
         }
 
         serialize_int(stream, (int&)locked, DOORLOCK_NOT_USED, DOORLOCK_SKIP_SHUT_DOORS);
+        serialize_int(stream, radioStation, -1, 15);
 
         return true;
     }

@@ -93,6 +93,7 @@ PACKET_HANDLER(ePacketType::PLAYER_ASSIGN_HOST, Packets::System::PlayerAssignHos
     if (pPlayerAssignHost->playerid == CNetworkPlayerManager::m_nMyId)
     {
         CLocalPlayer::m_bIsHost = true;
+        CWeatherSync::ms_bHasHostState = false;
 
         CPatch::RevertTemporaryPatches();  // the host generates the population for everyone
         logger::info("[net] we are the host now: population generation enabled");

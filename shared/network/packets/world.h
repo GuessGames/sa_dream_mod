@@ -17,6 +17,10 @@ public:
     uint8_t currentDay;
     uint8_t currentHour;
     uint8_t currentMinute;
+    uint8_t currentSecond = 0;
+    // -1 = not forced; set by missions, cheats and the admin menu
+    int forcedWeather = -1;
+    float interpolation = 0.0f;
 
 private:
     template <typename Stream>
@@ -40,6 +44,9 @@ private:
         serialize_int(stream, currentDay, 1, 31);
         serialize_int(stream, currentHour, 0, 23);
         serialize_int(stream, currentMinute, 0, 59);
+        serialize_int(stream, currentSecond, 0, 59);
+        serialize_int(stream, forcedWeather, -1, WEATHER_EXTRACOLOURS_2);
+        serialize_compressed_float(stream, interpolation, 0.0f, 1.0f, 0.001f);
 
         return true;
     }
