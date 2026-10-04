@@ -32,6 +32,16 @@ SA Dream Mod is my build based on [CoopAndreas](https://github.com/Tornamic/Coop
 
 In the launcher press **Server** → **Start server**: the panel shows the status, players online, the log and the addresses to give your friends.
 
+### 🛠 Адмін-меню / Admin menu (F8)
+У грі натисніть **F8**:
+- **Місії** (тільки хост): провалити/скасувати поточну, перезапустити останню, запустити або замінити будь-яку місію з пошуком.
+- **Гравець:** здоров'я, броня, безсмертя, гроші, набори зброї, джетпак, парашут, навички, розшук.
+- **Транспорт:** спавн будь-якої машини за назвою, ремонт, поставити на колеса.
+- **Телепорт:** до мітки на карті, до іншого гравця, збережена точка, відомі місця.
+- **Світ** (тільки хост): час і погода — передаються всім.
+
+In game press **F8** for the admin menu: missions (host), player cheats, vehicle spawner, teleports, time & weather (host).
+
 ### 🌐 Гра через інтернет / Playing over the internet
 Найпростіше — віртуальна мережа на кшталт **Radmin VPN** або **ZeroTier**: усі заходять в одну мережу, друзі вводять IP хоста з неї. Інакше відкрийте порт **6767 UDP** на роутері хоста.
 

@@ -54,3 +54,7 @@ void CDebugVehicleSpawner::Process()
         }
     }
 }
+const char* CDebugVehicleSpawner::GetVehicleName(int index)
+{
+    return vehicleNames[index];
+}

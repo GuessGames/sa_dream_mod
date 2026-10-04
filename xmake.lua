@@ -20,6 +20,9 @@ target("client", function()
     set_toolchains("msvc")
 
     set_basename("CoopAndreasSA")
+
+    -- sources are UTF-8 (Ukrainian UI strings in the admin menu)
+    add_cxflags("/utf-8", {force = true})
     set_arch("x86")
     set_plat("windows")
 

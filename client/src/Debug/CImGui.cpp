@@ -5,6 +5,7 @@
 #include "backends/imgui_impl_dx9.h"
 #include "CPacketTimeline.h"
 #include "MissionRunner.h"
+#include "CAdminMenu.h"
 
 ImFont* pFont;
 
@@ -56,8 +57,17 @@ void CImGui::SetActive(bool bActive)
     ImGui::GetIO().MouseDrawCursor = ms_bActive;
 }
 
+void CImGui::UpdateActive()
+{
+    bool bActive = ms_bDebugWindow || CAdminMenu::ms_bOpen;
+    if (bActive != ms_bActive)
+        SetActive(bActive);
+}
+
 void CImGui::Init()
 {
+    CAdminMenu::Init();
+
     Events::initRwEvent += []
     {
         ImGui::CreateContext();
@@ -82,6 +92,9 @@ void CImGui::Init()
     {
         if (CImGui::ms_bActive && !FrontEndMenuManager.m_bMenuActive)
         {
+            // readable on any resolution: 1.0 at 1080p, ~1.33 at 1440p, 2.0 at 4K
+            ImGui::GetStyle().FontScaleMain = std::max(1.0f, RsGlobal.maximumHeight / 1080.0f);
+
             ImGui_ImplDX9_NewFrame();
             ImGui_ImplWin32_NewFrame();
             ImGui::NewFrame();
@@ -96,6 +109,8 @@ void CImGui::Init()
             }
 
             ImGui::PushFont(pFont);
+            if (CImGui::ms_bDebugWindow)
+            {
             ImGui::Begin("Debug", nullptr,
                 ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_AlwaysAutoResize);
 
@@ -116,10 +131,14 @@ void CImGui::Init()
             if (bMissionRunner && MissionRunner::DrawUI())
             {
                 bMissionRunner = false;
-                CImGui::SetActive(false);
+                CImGui::ms_bDebugWindow = false;
+                CImGui::UpdateActive();
             }
 
             ImGui::End();
+            }
+
+            CAdminMenu::DrawUI();
             ImGui::PopFont();
 
             ImGui::EndFrame();
@@ -136,7 +155,8 @@ void CImGui::Init()
         if (strncmp(ACTIVATE_DEBUG_CHEAT, CCheat::m_CheatString, ARRAY_SIZE(ACTIVATE_DEBUG_CHEAT) - 1) == 0)
         {
             CCheat::m_CheatString[0] = '\0';
-            CImGui::SetActive(!CImGui::ms_bActive);
+            CImGui::ms_bDebugWindow = !CImGui::ms_bDebugWindow;
+            CImGui::UpdateActive();
         }
     };
 }

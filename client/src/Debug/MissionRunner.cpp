@@ -179,3 +179,18 @@ bool MissionRunner::DrawUI()
     ImGui::End();
     return bMissionLaunched;
 }
+
+int MissionRunner::GetMissionCount()
+{
+    return static_cast<int>(ARRAY_SIZE(MISSIONS));
+}
+
+const char* MissionRunner::GetMissionName(int index)
+{
+    return MISSIONS[index].m_szName;
+}
+
+int MissionRunner::GetMissionId(int index)
+{
+    return MISSIONS[index].m_nId;
+}
