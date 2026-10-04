@@ -121,7 +121,11 @@ namespace CoopManager
             {"pGame", new[]{"Гра", "Game"}},
             {"pFolder", new[]{"Тека гри", "Game folder"}},
             {"pChange", new[]{"Змінити…", "Change…"}},
-            {"pExeNeeded", new[]{"Потрібен gta_sa.exe версії 1.0 US (архів або тека з ним):", "gta_sa.exe version 1.0 US is required (archive or folder):"}},
+            {"pExeNeeded", new[]{"Архів additional — потрібен, якщо гра не версії 1.0 US", "Additional archive — needed if your game isn't 1.0 US"}},
+            {"pNoArchive", new[]{"не вказано", "not set"}},
+            {"pArchiveRequired", new[]{"Ваша гра не версії 1.0 US. Вкажіть архів additional (або теку з gta_sa.exe 1.0 US) — лаунчер встановить усе з нього сам.", "Your game is not version 1.0 US. Choose the additional archive (or a folder with gta_sa.exe 1.0 US) — the launcher installs everything from it."}},
+            {"pChooseGame", new[]{"Вкажіть теку, де встановлена GTA San Andreas.", "Choose the folder where GTA San Andreas is installed."}},
+            {"pArchiveBad", new[]{"У вибраному архіві/теці немає gta_sa.exe версії 1.0 US.", "The chosen archive/folder has no gta_sa.exe version 1.0 US."}},
             {"pChooseArchive", new[]{"Вказати…", "Choose…"}},
             {"pInstall", new[]{"Встановити", "Install"}},
             {"pUpdateTo", new[]{"Оновити до {0}", "Update to {0}"}},
@@ -207,7 +211,7 @@ namespace CoopManager
                 if (repo != null) { s.SourceDir = repo; s.PlayerMode = false; }
             }
             if (Program.IsPlayerEdition) { s.PlayerMode = true; s.SourceDir = ""; }
-            if (!File.Exists(Path.Combine(s.GameDir, "gta_sa.exe")))
+            if (!IsGameFolder(s.GameDir))
             {
                 string found = FindGameDir();
                 if (found != null) s.GameDir = found;
@@ -237,7 +241,18 @@ namespace CoopManager
                     @"Games\GTA San Andreas", @"Program Files (x86)\Rockstar Games\GTA San Andreas", @"Program Files\Rockstar Games\GTA San Andreas" })
                     candidates.Add(Path.Combine(root, rel));
             }
-            return candidates.FirstOrDefault(c => { try { return File.Exists(Path.Combine(c, "gta_sa.exe")); } catch { return false; } });
+            return candidates.FirstOrDefault(IsGameFolder);
+        }
+
+        // a GTA SA folder: any known exe name (retail/RGL gta_sa.exe, Steam gta-sa.exe) or the main archive
+        public static bool IsGameFolder(string dir)
+        {
+            try
+            {
+                return !string.IsNullOrEmpty(dir) && (File.Exists(Path.Combine(dir, "gta_sa.exe")) ||
+                       File.Exists(Path.Combine(dir, "gta-sa.exe")) || File.Exists(Path.Combine(dir, @"models\gta3.img")));
+            }
+            catch { return false; }
         }
 
         public static string FindRepoRoot(string dir)
@@ -569,6 +584,8 @@ namespace CoopManager
             }
             manifest.Add("eax_orig.dll|generated");
             manifest.Add("vorbisHooked.dll|generated");
+            // e.g. the Steam version has gta-sa.exe only: our gta_sa.exe has no original to restore, remove it on uninstall
+            if (!File.Exists(Path.Combine(BackupDir, "gta_sa.exe"))) manifest.Add("gta_sa.exe|generated");
 
             Directory.CreateDirectory(LogsDir);
             File.WriteAllLines(ManifestPath, new[] { "# installed " + DateTime.Now.ToString("yyyy-MM-dd HH:mm"), "# version " + pm.Version }.Concat(manifest));
@@ -1604,7 +1621,7 @@ namespace CoopManager
         volatile bool busy;
         string remoteVersion;
 
-        Label lbTitle, lbSub, lbFolderCap, lbFolder, lbExeCap, lbModState, lbUpdate, lbStatus, lbPlayerCap, lbKeyCap, lbNick, lbIp, lbPort, lbKey, lbIpHint;
+        Label lbTitle, lbSub, lbFolderCap, lbFolder, lbExeCap, lbArchive, lbModState, lbUpdate, lbStatus, lbPlayerCap, lbKeyCap, lbNick, lbIp, lbPort, lbKey, lbIpHint;
         Button btnLang, btnFolder, btnExe, btnMain, btnPlay, btnHowKey, btnLogs, btnRepair, btnUninstall;
         TextBox tbNick, tbIp, tbPort, tbKey;
         Panel cardGame, cardPlayer;
@@ -1620,7 +1637,7 @@ namespace CoopManager
             FormBorderStyle = FormBorderStyle.FixedSingle;
             MaximizeBox = false;
             StartPosition = FormStartPosition.CenterScreen;
-            ClientSize = new Size(540, 650);
+            ClientSize = new Size(540, 672);
             try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
 
             var header = Theme.HeaderPanel(this, L.T("pTitle"), L.T("pSubtitle"), 72);
@@ -1634,28 +1651,30 @@ namespace CoopManager
             int x = 18, w = ClientSize.Width - 36;
 
             // --- game card
-            cardGame = Card(x, 88, w, 150);
+            cardGame = Card(x, 88, w, 172);
             lbFolderCap = Caption(cardGame, 14, 10);
-            lbFolder = new Label { Location = new Point(14, 32), Size = new Size(w - 130, 22), AutoEllipsis = true, ForeColor = Theme.Text };
+            lbFolder = new Label { Location = new Point(14, 34), Size = new Size(w - 130, 22), AutoEllipsis = true, ForeColor = Theme.Text };
             cardGame.Controls.Add(lbFolder);
-            btnFolder = SmallButton(cardGame, w - 108, 28, 94);
+            btnFolder = SmallButton(cardGame, w - 108, 30, 94);
             btnFolder.Click += delegate { ChooseFolder(); };
-            lbModState = new Label { Location = new Point(14, 64), Size = new Size(w - 28, 22), Font = Theme.Semi(10.5f) };
-            lbUpdate = new Label { Location = new Point(14, 88), Size = new Size(w - 28, 22), ForeColor = Theme.Muted };
+            lbExeCap = new Label { Location = new Point(14, 64), Size = new Size(w - 130, 20), ForeColor = Theme.Muted, Font = Theme.Base(9f) };
+            cardGame.Controls.Add(lbExeCap);
+            lbArchive = new Label { Location = new Point(14, 84), Size = new Size(w - 130, 22), AutoEllipsis = true, ForeColor = Theme.Text };
+            cardGame.Controls.Add(lbArchive);
+            btnExe = SmallButton(cardGame, w - 108, 76, 94);
+            btnExe.Click += delegate { ChooseExeSource(); };
+            lbModState = new Label { Location = new Point(14, 116), Size = new Size(w - 28, 22), Font = Theme.Semi(10.5f) };
+            lbUpdate = new Label { Location = new Point(14, 140), Size = new Size(w - 28, 22), ForeColor = Theme.Muted };
             cardGame.Controls.Add(lbModState);
             cardGame.Controls.Add(lbUpdate);
-            lbExeCap = new Label { Location = new Point(14, 116), Size = new Size(w - 130, 22), ForeColor = Theme.Warn };
-            cardGame.Controls.Add(lbExeCap);
-            btnExe = SmallButton(cardGame, w - 108, 112, 94);
-            btnExe.Click += delegate { ChooseExeSource(); };
 
-            btnMain = new Button { Location = new Point(x, 248), Size = new Size(w, 46), Tag = "primary", Font = Theme.Semi(12f) };
+            btnMain = new Button { Location = new Point(x, 270), Size = new Size(w, 46), Tag = "primary", Font = Theme.Semi(12f) };
             btnMain.Click += delegate { OnMainButton(); };
             Controls.Add(btnMain);
             actionButtons.Add(btnMain);
 
             // --- player card
-            cardPlayer = Card(x, 306, w, 196);
+            cardPlayer = Card(x, 328, w, 196);
             lbPlayerCap = Caption(cardPlayer, 14, 10);
             lbNick = FieldLabel(cardPlayer, 14, 40);
             tbNick = Field(cardPlayer, 150, 37, 220, settings.Nick);
@@ -1673,19 +1692,19 @@ namespace CoopManager
             btnHowKey = SmallButton(cardPlayer, 330, 153, 132);
             btnHowKey.Click += delegate { HowToGetKey(); };
 
-            btnPlay = new Button { Location = new Point(x, 514), Size = new Size(w, 56), Tag = "play", Font = Theme.Semi(15f) };
+            btnPlay = new Button { Location = new Point(x, 536), Size = new Size(w, 56), Tag = "play", Font = Theme.Semi(15f) };
             btnPlay.Click += delegate { Play(); };
             Controls.Add(btnPlay);
             actionButtons.Add(btnPlay);
 
             // --- footer
-            lbStatus = new Label { Location = new Point(x, 582), Size = new Size(w, 22), ForeColor = Theme.Muted, AutoEllipsis = true };
+            lbStatus = new Label { Location = new Point(x, 604), Size = new Size(w, 22), ForeColor = Theme.Muted, AutoEllipsis = true };
             Controls.Add(lbStatus);
-            btnLogs = SmallButton(this, x, 608, 120);
+            btnLogs = SmallButton(this, x, 630, 120);
             btnLogs.Click += delegate { Directory.CreateDirectory(installer.LogsDir); Process.Start("explorer.exe", installer.LogsDir); };
-            btnRepair = SmallButton(this, x + 128, 608, 120);
+            btnRepair = SmallButton(this, x + 128, 630, 120);
             btnRepair.Click += delegate { if (EnsureWritable()) RunBusy(() => installer.Repair()); };
-            btnUninstall = SmallButton(this, x + w - 150, 608, 150);
+            btnUninstall = SmallButton(this, x + w - 150, 630, 150);
             btnUninstall.Tag = "danger";
             btnUninstall.Click += delegate
             {
@@ -1762,13 +1781,27 @@ namespace CoopManager
             lbStatus.Text = line;
         }
 
+        bool IsGameFolder(string dir) { return Settings.IsGameFolder(dir); }
+
+        // the game needs gta_sa.exe 1.0 US from the archive and none is available yet
+        bool NeedsArchive()
+        {
+            string exe = Path.Combine(settings.GameDir, "gta_sa.exe");
+            bool is10us = File.Exists(exe) && new FileInfo(exe).Length == Installer.Exe10UsSize;
+            return !is10us && installer.GetCompatibleExe() == null;
+        }
+
         void RefreshState()
         {
             installer = new Installer(settings, SetStatus);
-            lbFolder.Text = settings.GameDir;
-            bool gameFound = File.Exists(Path.Combine(settings.GameDir, "gta_sa.exe"));
+            bool gameFound = IsGameFolder(settings.GameDir);
+            lbFolder.Text = gameFound ? settings.GameDir : settings.GameDir + "  —  " + L.T("exeMissing");
             lbFolder.ForeColor = gameFound ? Theme.Text : Theme.Danger;
-            if (!gameFound) lbFolder.Text = settings.GameDir + "  —  " + L.T("exeMissing");
+
+            bool needArchive = gameFound && NeedsArchive();
+            lbArchive.Text = string.IsNullOrEmpty(settings.AdditionalZip) ? L.T("pNoArchive") : settings.AdditionalZip;
+            lbArchive.ForeColor = needArchive ? Theme.Warn : Theme.Text;
+            lbExeCap.ForeColor = needArchive ? Theme.Warn : Theme.Muted;
 
             bool installed = installer.IsInstalled;
             lbModState.Text = installed ? L.F("pInstalledV", installer.InstalledVersion) : L.T("pNotInstalled");
@@ -1778,19 +1811,14 @@ namespace CoopManager
             else if (remoteVersion.Length == 0) lbUpdate.Text = L.T("pOffline");
             else lbUpdate.Text = installed && installer.InstalledVersion == remoteVersion ? L.T("pLatest") : L.F("pNewAvail", remoteVersion);
 
-            // gta_sa.exe 1.0 US is only asked for when the game has another version and no source was given yet
-            string exe = Path.Combine(settings.GameDir, "gta_sa.exe");
-            bool needExe = gameFound && new FileInfo(exe).Length != Installer.Exe10UsSize && installer.GetCompatibleExe() == null;
-            lbExeCap.Visible = btnExe.Visible = needExe;
-
             if (!installed) btnMain.Text = L.T("pInstall");
             else if (!string.IsNullOrEmpty(remoteVersion) && remoteVersion != installer.InstalledVersion) btnMain.Text = L.F("pUpdateTo", remoteVersion);
             else btnMain.Text = L.T("pCheck");
 
+            // buttons stay clickable: a click explains what is missing instead of doing nothing
             foreach (var b in actionButtons) b.Enabled = !busy;
             btnPlay.Enabled = !busy && installed;
             btnRepair.Enabled = btnUninstall.Enabled = !busy && installed;
-            btnMain.Enabled = !busy && gameFound && !needExe;
             UseWaitCursor = busy;
         }
 
@@ -1830,6 +1858,18 @@ namespace CoopManager
             {
                 RunBusy(CheckUpdates);
                 return;
+            }
+            if (!IsGameFolder(settings.GameDir))
+            {
+                MessageBox.Show(L.T("pChooseGame"), Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
+                ChooseFolder();
+                if (!IsGameFolder(settings.GameDir)) return;
+            }
+            if (NeedsArchive())
+            {
+                MessageBox.Show(L.T("pArchiveRequired"), Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
+                ChooseExeSource();
+                if (NeedsArchive()) return;
             }
             if (!EnsureWritable()) return;
             RunBusy(() =>
@@ -1875,7 +1915,8 @@ namespace CoopManager
                 settings.AdditionalZip = d.FileName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? Path.GetDirectoryName(d.FileName) : d.FileName;
                 settings.Save();
                 RefreshState();
-                if (lbExeCap.Visible) SetStatus(L.T("noExe"));
+                if (new Installer(settings, s => { }).GetCompatibleExeFromSettings() == null)
+                    MessageBox.Show(L.T("pArchiveBad"), Text, MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
         }
 
