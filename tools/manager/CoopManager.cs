@@ -926,8 +926,10 @@ namespace CoopManager
                 "# SA Dream Mod — release\n\n" +
                 "Ready-to-install files of **SA Dream Mod** (a CoopAndreas based co-op for GTA San Andreas).\n" +
                 "Готові файли **SA Dream Mod** (кооператив GTA San Andreas на основі CoopAndreas).\n\n" +
+                "## ⬇️ [Download the launcher / Завантажити лаунчер](https://github.com/" + s.ReleaseRepo + "/raw/main/" + Program.LauncherFileName + ")\n\n" +
+                "Or the latest one on the [Releases](https://github.com/" + s.ReleaseRepo + "/releases/latest) page / або на сторінці Releases.\n\n" +
                 "## How to play / Як грати\n\n" +
-                "1. Download `" + Program.LauncherFileName + "` (open it above → *Download raw file*) / завантажте лаунчер.\n" +
+                "1. Download `" + Program.LauncherFileName + "` (link above) / завантажте лаунчер (посилання вище).\n" +
                 "2. Run it, check the game folder, press **Install** / запустіть, перевірте теку гри, натисніть **Встановити**.\n" +
                 "3. Enter nickname, server IP and the beta key, press **PLAY** / введіть нік, IP і ключ, натисніть **ГРАТИ**.\n\n" +
                 "`gta_sa.exe` 1.0 US is not included (Rockstar file) — the launcher asks for it if your game needs it.\n" +
@@ -942,7 +944,37 @@ namespace CoopManager
             if (runTool("git", "add -A --renormalize", s.ReleaseDir) != 0) return;
             if (runTool("git", "add -A", s.ReleaseDir) != 0) return;
             if (runTool("git", "commit -m \"release " + version + "\"", s.ReleaseDir) != 0) return;
-            runTool("git", "push origin HEAD:main", s.ReleaseDir);
+            if (runTool("git", "push origin HEAD:main", s.ReleaseDir) != 0) return;
+            CreateGitHubRelease(version, head);
+        }
+
+        static string FindGh()
+        {
+            foreach (var p in new[] { @"C:\Program Files\GitHub CLI\gh.exe", @"C:\Program Files (x86)\GitHub CLI\gh.exe",
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), @"Programs\GitHub CLI\gh.exe") })
+                if (File.Exists(p)) return p;
+            return null;
+        }
+
+        // a GitHub Release with the launcher attached: players just press "download" on the Releases page
+        public void CreateGitHubRelease(string version, string sourceCommit)
+        {
+            string gh = FindGh();
+            if (gh == null)
+            {
+                log("GitHub CLI (gh) is not installed: the files are published, the Releases page is skipped");
+                return;
+            }
+            string tag = "v" + version;
+            string notes = Path.Combine(Path.GetTempPath(), "sadream_release_notes.md");
+            File.WriteAllText(notes,
+                "**Download `" + Program.LauncherFileName + "` below, run it, press Install, then PLAY.**\n" +
+                "**Завантажте `" + Program.LauncherFileName + "` нижче, запустіть, натисніть «Встановити», потім «ГРАТИ».**\n\n" +
+                "If you already have the launcher, just press Update in it / якщо лаунчер уже є — натисніть «Оновити».\n\n" +
+                "Source / код: https://github.com/" + Regex.Replace(new Git(s).OriginUrl(), @"^https://github\.com/|\.git$", "") + "/tree/" + sourceCommit + "\n",
+                new UTF8Encoding(false));
+            runTool(gh, "release create " + tag + " \"" + Path.Combine(s.ReleaseDir, Program.LauncherFileName) + "\" --repo " + s.ReleaseRepo +
+                " --title \"SA Dream Mod " + version + "\" --notes-file \"" + notes + "\" --latest", s.ReleaseDir);
         }
     }
 
@@ -1947,6 +1979,14 @@ namespace CoopManager
                             break;
                         case "--assemble":
                             inst.AssembleFromBuild(args.Length > 1 ? args[1] : inst.DevPackageDir, true);
+                            break;
+                        case "--gh-release":
+                            // Releases page for the version that is already in the release repo
+                            var rm = Manifest.Load(settings.ReleaseDir);
+                            if (rm == null) { log("nothing published yet"); return 1; }
+                            string commit;
+                            rm.Meta.TryGetValue("commit", out commit);
+                            new DevOps(settings, log, tool).CreateGitHubRelease(rm.Version, new Git(settings).Get("rev-parse " + commit));
                             break;
                         case "--publish":
                             new DevOps(settings, log, tool).Publish(url => { log("publishing to " + url); return true; });

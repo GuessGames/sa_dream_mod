@@ -9,9 +9,13 @@ SA Dream Mod is my build based on [CoopAndreas](https://github.com/Tornamic/Coop
 
 ---
 
+## ⬇️ [Завантажити лаунчер / Download the launcher](https://github.com/GuessGames/sa_dream_mod_coop/raw/main/SADreamLauncher.exe)
+
+---
+
 ## 🎮 Як грати / How to play
 
-1. Відкрийте **[sa_dream_mod_coop](https://github.com/GuessGames/sa_dream_mod_coop)** і завантажте `SADreamLauncher.exe`.
+1. Натисніть посилання **«Завантажити лаунчер»** вище — завантажиться `SADreamLauncher.exe`. Якщо Windows покаже «Windows захистив ваш ПК», натисніть **«Докладніше» → «Однаково запустити»** (лаунчер не підписаний).
 2. Запустіть лаунчер. Тека гри знайдеться сама, якщо ні — натисніть **«Змінити…»**.
 3. Натисніть **«Встановити»**. Лаунчер завантажить мод і зробить резервну копію оригінальних файлів гри.
 4. Введіть **нік**, **IP сервера** (його дає той, хто хостить) і **ключ бета-тесту** (кнопка **«Як отримати?»**).
@@ -21,7 +25,7 @@ SA Dream Mod is my build based on [CoopAndreas](https://github.com/Tornamic/Coop
 
 > Потрібна гра **GTA San Andreas**. Мод працює на версії `gta_sa.exe` **1.0 US**. Якщо у вас інша версія (Steam, Rockstar Launcher), лаунчер попросить вказати архів або теку з `gta_sa.exe` 1.0 US — ми його не поширюємо.
 
-**English:** download `SADreamLauncher.exe` from [sa_dream_mod_coop](https://github.com/GuessGames/sa_dream_mod_coop), run it, press **Install**, enter your nickname, the server IP and the beta key, press **PLAY**. The game must be GTA San Andreas with `gta_sa.exe` **1.0 US** (the launcher asks for it if your version differs).
+**English:** download the launcher with the link above (if SmartScreen warns, choose *More info → Run anyway*), run it, press **Install**, enter your nickname, the server IP and the beta key, press **PLAY**. The game must be GTA San Andreas with `gta_sa.exe` **1.0 US** (the launcher asks for it if your version differs).
 
 ### 🌐 Гра через інтернет / Playing over the internet
 Сервер (`server.exe`, порт **6767 UDP**) запускає один із гравців. Іншим потрібна його адреса: або відкрийте порт 6767 UDP на роутері, або використайте віртуальну мережу на кшталт Radmin VPN / ZeroTier.
