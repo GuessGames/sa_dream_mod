@@ -221,7 +221,11 @@ namespace CoopManager
                         case "GameDir": s.GameDir = v; break;
                         case "SourceDir": s.SourceDir = v; break;
                         case "AdditionalZip": s.AdditionalZip = v; break;
-                        case "ReleaseRepo": if (NormalizeRepo(v).Length > 0) s.ReleaseRepo = NormalizeRepo(v); break;
+                        case "ReleaseRepo":
+                            // the release repo was first called sa_dream_mod_release; old launchers saved that name
+                            if (NormalizeRepo(v).Length > 0 && !NormalizeRepo(v).Equals("GuessGames/sa_dream_mod_release", StringComparison.OrdinalIgnoreCase))
+                                s.ReleaseRepo = NormalizeRepo(v);
+                            break;
                         case "ReleaseDir": s.ReleaseDir = v; break;
                         case "Ukrainian": s.Ukrainian = v == "1"; break;
                         case "PlayerMode": s.PlayerMode = v != "0"; break;
