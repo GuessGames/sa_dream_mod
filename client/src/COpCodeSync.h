@@ -35,6 +35,8 @@ struct SSyncedOpCode
     // i checked and did not find any opcode where a handle is in 
     // the 5th or later parameters
     eSyncedParamType m_aParamTypes[4] = { eSyncedParamType::NONE, eSyncedParamType::NONE, eSyncedParamType::NONE, eSyncedParamType::NONE };
+    // only synced for missions that were not adapted by hand (adapted ones show texts per player with Coop.* commands)
+    bool m_bGenericOnly = false;
 };
 
 struct OpcodeSyncHeader
@@ -75,4 +77,10 @@ public:
 	static void HandlePacket(const uint8_t* buffer, int bufferSize);
 	static std::vector<uint8_t> COpCodeSync::SerializeOpcode(int idx, int& outSize);
 	static bool COpCodeSync::IsOpcodeSyncable(int opcode, int* opcodeIdx = nullptr, bool ignoreOpCodeSync = false);
+	// the script whose command is being executed right now
+	static CRunningScript* GetCurrentScript();
+	// adapted by hand: called Coop.EnableSyncingThisScript
+	static bool IsScriptAdapted(CRunningScript* script);
+	// any other mission script: synced generically (texts, cutscenes, camera, blips, markers)
+	static bool IsGenericMissionScript(CRunningScript* script);
 };

@@ -12,6 +12,7 @@ public:
 	unsigned char m_nTempId = 255;
 	unsigned char m_nCreatedBy;
 	int m_nBlipHandle = -1;
+	bool m_bMissionBlip = false; // m_nBlipHandle was created by the generic mission sync
 	// pool handle at creation: detects a pool slot reused by another vehicle
 	int m_nPoolRef = -1;
 	// the game removed our hosted vehicle before the server confirmed its id

@@ -68,6 +68,10 @@ void CCore::Init()
     }
 
     ms_bAutoConnect = strstr(cmd, "-autoconnect") != nullptr;
+    if (const char* testMission = strstr(cmd, "-testmission "))
+    {
+        ms_nTestMission = atoi(testMission + 13);
+    }
 
     gvm.Detect();
     // log to CoopAndreas\logs\client[_N].log (read by the manager); -console shows a console window instead

@@ -64,3 +64,15 @@ PACKET_HANDLER(ePacketType::CREATE_STATIC_BLIP, Packets::Blips::StaticBlipsSnaps
         GetPacketFactory().SendToAll(*pCreateStaticBlip, pNetworkPlayer);
     }
 }
+
+PACKET_HANDLER(ePacketType::MISSION_ENTITY_BLIPS, Packets::Blips::MissionEntityBlips* pPacket, CNetworkPlayer* pNetworkPlayer)
+{
+    if (pNetworkPlayer->m_bIsHost)
+        GetPacketFactory().SendToAll(*pPacket, pNetworkPlayer);
+}
+
+PACKET_HANDLER(ePacketType::MISSION_AREAS, Packets::Blips::MissionAreas* pPacket, CNetworkPlayer* pNetworkPlayer)
+{
+    if (pNetworkPlayer->m_bIsHost)
+        GetPacketFactory().SendToAll(*pPacket, pNetworkPlayer);
+}

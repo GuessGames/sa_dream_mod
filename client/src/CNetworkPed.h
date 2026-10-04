@@ -22,6 +22,7 @@ public:
 	float m_fSteerAngle = 0.0f;
 	float m_fHealth = 100.0f;
 	int m_nBlipHandle = -1;
+	bool m_bMissionBlip = false; // m_nBlipHandle was created by the generic mission sync
 	bool m_bClaimOnRelease = false;
 	// pool handle at creation: detects a pool slot reused by another ped (pointer alone is not enough)
 	int m_nPoolRef = -1;

@@ -50,6 +50,21 @@ const SSyncedOpCode syncedOpcodes[] =
     {0x03E5}, // print_help {key} [gxt_key]
     {0x054C}, // load_mission_text {tableName} [string]
     {0x0998}, // award_player_mission_respect {value} [int]
+    // texts of missions that were not adapted by hand
+    {COMMAND_PRINT_NOW, false, {}, true},
+    {COMMAND_PRINT, false, {}, true},
+    {COMMAND_PRINT_SOON, false, {}, true},
+    {COMMAND_PRINT_WITH_NUMBER_NOW, false, {}, true},
+    {COMMAND_PRINT_WITH_NUMBER, false, {}, true},
+    {COMMAND_PRINT_WITH_NUMBER_BIG, false, {}, true},
+    {COMMAND_PRINT_WITH_2_NUMBERS_NOW, false, {}, true},
+    {COMMAND_PRINT_WITH_2_NUMBERS, false, {}, true},
+    {COMMAND_PRINT_HELP_FOREVER, false, {}, true},
+    {COMMAND_PRINT_HELP_WITH_NUMBER, false, {}, true},
+    {COMMAND_CLEAR_HELP, false, {}, true},
+    {COMMAND_CLEAR_SMALL_PRINTS, false, {}, true},
+    {COMMAND_CLEAR_THIS_PRINT, false, {}, true},
+    {COMMAND_CLEAR_THIS_BIG_PRINT, false, {}, true},
     
     // Population management
     {0x01EB}, // set_car_density_multiplier {multiplier} [float]
@@ -190,23 +205,36 @@ void __fastcall CRunningScript__ReadTextLabelFromScript_Hook_SwitchParametersCon
 }
 
 /// <param name="opcodeIdx">syncedOpcodes index</param>
+CRunningScript* COpCodeSync::GetCurrentScript()
+{
+    return lastProcessedScript;
+}
+
+bool COpCodeSync::IsScriptAdapted(CRunningScript* script)
+{
+    if (!script)
+        return false;
+
+    for (size_t i = 0; i < ms_iFreeSyncedScript; ++i)
+    {
+        if (strnicmp(ms_aszSyncedScripts[i], script->m_szName, 7) == 0)
+            return true;
+    }
+    return false;
+}
+
+bool COpCodeSync::IsGenericMissionScript(CRunningScript* script)
+{
+    // "coopand" is the fake script used to replay synced opcodes
+    return script && script->m_bIsMission && strncmp(script->m_szName, "coopand", 7) != 0 && !IsScriptAdapted(script);
+}
+
 bool COpCodeSync::IsOpcodeSyncable(int opcode, int* opcodeIdx, bool ignoreOpCodeSync)
 {
-    bool bScriptSynced = false;
+    bool bScriptSynced = IsScriptAdapted(lastProcessedScript);
+    bool bGeneric = !bScriptSynced && IsGenericMissionScript(lastProcessedScript);
 
-    if (lastProcessedScript)
-    {
-        for (size_t i = 0; i < ms_iFreeSyncedScript; ++i)
-        {
-            if (strnicmp(ms_aszSyncedScripts[i], lastProcessedScript->m_szName, 7) == 0)
-            {
-                bScriptSynced = true;
-                break;
-            }
-        }
-    }
-
-    if (((CLocalPlayer::m_bIsHost && ms_bSyncingEnabled) && bScriptSynced)
+    if (((CLocalPlayer::m_bIsHost && ms_bSyncingEnabled) && (bScriptSynced || bGeneric))
         || ignoreOpCodeSync
         || CTaskSequenceSync::IsOpCodeTaskSynced((eScriptCommands)opcode))
     {
@@ -214,6 +242,9 @@ bool COpCodeSync::IsOpcodeSyncable(int opcode, int* opcodeIdx, bool ignoreOpCode
         {
             if (syncedOpcodes[i].m_wOpCode == opcode)
             {
+                if (syncedOpcodes[i].m_bGenericOnly && !bGeneric && !ignoreOpCodeSync)
+                    return false;
+
                 if (opcodeIdx)
                 {
                     *opcodeIdx = i;
@@ -656,6 +687,15 @@ void COpCodeSync::HandlePacket(const uint8_t* buffer, int bufferSize)
         memcpy(textParamBuffer[i], current, textLengthBuffer[i]);
         textParamBuffer[i][textLengthBuffer[i]] = '\0';
         current += textLengthBuffer[i];
+    }
+
+    for (const auto& synced : syncedOpcodes)
+    {
+        if (synced.m_wOpCode == header.opcode && (synced.m_bGenericOnly || header.opcode == 0x02E4 || header.opcode == 0x02E7))
+        {
+            logger::info("[mission] replay %04X %s", header.opcode, textParamCount ? textParamBuffer[0] : "");
+            break;
+        }
     }
 
     static CRunningScript script;

@@ -881,7 +881,7 @@ namespace CoopManager
         }
 
         // profile 0 = normal play; windowIndex 0/1 = side-by-side placement, -1 = none; returns the logged command line
-        public static string Launch(Settings s, int profile, string nick, string ip, int windowIndex, bool autoConnect)
+        public static string Launch(Settings s, int profile, string nick, string ip, int windowIndex, bool autoConnect, string extraArgs = "")
         {
             string serial = Serial.GetSerial();
             if (string.IsNullOrEmpty(serial)) throw new Exception(L.T("needSerial"));
@@ -891,6 +891,7 @@ namespace CoopManager
             if (profile > 0) args += " -profile " + profile;
             if (windowIndex >= 0) args += " --coopd" + windowIndex;
             if (autoConnect) args += " -autoconnect";
+            if (!string.IsNullOrEmpty(extraArgs)) args += " " + extraArgs;
             Process.Start(new ProcessStartInfo(Path.Combine(s.GameDir, "gta_sa.exe"), args) { WorkingDirectory = s.GameDir, UseShellExecute = false });
             return "gta_sa.exe " + args.Replace(serial, "***");
         }
@@ -2303,11 +2304,13 @@ namespace CoopManager
                             else inst.Install(true);
                             break;
                         case "--test":
+                            // --test [missionId]: the host launches that mission by itself (-testmission)
+                            string extra = args.Length > 1 ? "-testmission " + args[1] : "";
                             GameLauncher.StartDetachedServer(inst);
                             Thread.Sleep(1000);
-                            log(GameLauncher.Launch(settings, 1, settings.Nick1, "127.0.0.1", 0, true));
+                            log(GameLauncher.Launch(settings, 1, settings.Nick1, "127.0.0.1", 0, true, extra));
                             Thread.Sleep(1500);
-                            log(GameLauncher.Launch(settings, 2, settings.Nick2, "127.0.0.1", 1, true));
+                            log(GameLauncher.Launch(settings, 2, settings.Nick2, "127.0.0.1", 1, true, extra));
                             break;
                         case "--stop":
                             GameLauncher.StopGames();

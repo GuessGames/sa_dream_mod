@@ -4,6 +4,7 @@
 #include <CNetworkEntityBlip.h>
 #include <CNetworkCheckpoint.h>
 #include <CNetworkStaticBlip.h>
+#include <CMissionSync.h>
 
 PACKET_HANDLER(ePacketType::UPDATE_ENTITY_BLIP, Packets::Blips::UpdateEntityBlip* pUpdateEntityBlip)
 {
@@ -50,4 +51,16 @@ PACKET_HANDLER(ePacketType::CREATE_STATIC_BLIP, Packets::Blips::StaticBlipsSnaps
 	}
 
 	CNetworkStaticBlip::Create(*pCreateStaticBlip);
+}
+
+PACKET_HANDLER(ePacketType::MISSION_ENTITY_BLIPS, Packets::Blips::MissionEntityBlips* pPacket)
+{
+	if (!CLocalPlayer::m_bIsHost)
+		CMissionSync::ApplyEntityBlips(*pPacket);
+}
+
+PACKET_HANDLER(ePacketType::MISSION_AREAS, Packets::Blips::MissionAreas* pPacket)
+{
+	if (!CLocalPlayer::m_bIsHost)
+		CMissionSync::ApplyAreas(*pPacket);
 }

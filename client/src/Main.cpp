@@ -33,6 +33,7 @@
 #include <network/packets/scripts.h>
 #include <CNetworkEntityBlip.h>
 #include <CPickupSync.h>
+#include <CMissionSync.h>
 
 unsigned int lastOnFootSyncTickRate = 0;
 unsigned int lastDriverSyncTickRate = 0;
@@ -228,6 +229,8 @@ public:
 
                 CNetworkEntityBlip::Update();
 
+                CMissionSync::Process();
+
                 static uint32_t crashHotkeyPressedAt = 0;
 
                 if (GetAsyncKeyState(VK_F7) && GetAsyncKeyState(VK_F10) && GetAsyncKeyState(VK_NUMPAD1))
@@ -274,6 +277,7 @@ public:
             }*/
 
             CNetworkCheckpoint::Process();
+            CMissionSync::DrawAreas();
             CNetworkPlayerNameTag::Process();
             CChat::Draw();
             CChat::DrawInput();

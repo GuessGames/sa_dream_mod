@@ -15,6 +15,7 @@
 #include "DamageHooks.h"
 #include "ShadowHooks.h"
 #include "CPickupSync.h"
+#include "CMissionSync.h"
 
 void CHook::Init()
 {
@@ -35,4 +36,5 @@ void CHook::Init()
     DamageHooks::InjectHooks();
     ShadowHooks::InjectHooks();
     CPickupSync::InjectHooks();
+    CMissionSync::InjectHooks();
 }

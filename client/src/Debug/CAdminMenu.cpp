@@ -88,10 +88,46 @@ void LaunchMission(int id)
 }
 
 // fails the running mission (its own cleanup runs) and launches `id` once it is gone
+// mission cleanup only "releases" mission cars, so a restarted mission would add a second one next to the old
+struct SLeftoverVehicle
+{
+    CVehicle* vehicle;
+    int ref;
+};
+std::vector<SLeftoverVehicle> leftoverVehicles;
+
+void RememberMissionVehicles()
+{
+    leftoverVehicles.clear();
+    for (auto* networkVehicle : CNetworkVehicleManager::m_pVehicles)
+    {
+        CVehicle* vehicle = networkVehicle->m_pVehicle;
+        if (networkVehicle->m_bSyncing && vehicle && networkVehicle->m_nCreatedBy == MISSION_VEHICLE)
+            leftoverVehicles.push_back({vehicle, CPools::GetVehicleRef(vehicle)});
+    }
+}
+
+void RemoveLeftoverMissionVehicles()
+{
+    int removed = 0;
+    for (auto& v : leftoverVehicles)
+    {
+        // still the same, empty vehicle: nobody is driving or sitting in it
+        if (CPools::GetVehicle(v.ref) != v.vehicle || v.vehicle->m_pDriver || v.vehicle->m_nNumPassengers > 0)
+            continue;
+        Command<Commands::DELETE_CAR>(v.ref);
+        removed++;
+    }
+    leftoverVehicles.clear();
+    if (removed)
+        logger::info("[admin] removed %d leftover mission vehicle(s)", removed);
+}
+
 void ReplaceMission(int id)
 {
     if (IsMissionActive())
     {
+        RememberMissionVehicles();
         Command<Commands::FAIL_CURRENT_MISSION>();
         nPendingMissionId = id;
         nPendingSince = GetTickCount();
@@ -173,6 +209,20 @@ void CAdminMenu::Process()
     if (!ped)
         return;
 
+    // -testmission N: started by the host 15 s after connecting
+    static uint32_t authenticatedAt = 0;
+    if (!CNetwork::m_bAuthenticated)
+        authenticatedAt = 0;
+    else if (!authenticatedAt)
+        authenticatedAt = GetTickCount();
+    if (CCore::ms_nTestMission >= 0 && authenticatedAt && CLocalPlayer::m_bIsHost && GetTickCount() - authenticatedAt > 15000 &&
+        !IsMissionActive() && !FrontEndMenuManager.m_bMenuActive)
+    {
+        int id = CCore::ms_nTestMission;
+        CCore::ms_nTestMission = -1;
+        LaunchMission(id);
+    }
+
     if (bGodMode)
     {
         ped->m_fHealth = ped->m_fMaxHealth;
@@ -190,6 +240,7 @@ void CAdminMenu::Process()
         {
             int id = nPendingMissionId;
             nPendingMissionId = -1;
+            RemoveLeftoverMissionVehicles();
             LaunchMission(id);
         }
         else if (GetTickCount() - nPendingSince > 15000)

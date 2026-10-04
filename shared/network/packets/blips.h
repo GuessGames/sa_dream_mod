@@ -150,4 +150,87 @@ private:
         return true;
     }
 };
+// generic mission sync: radar blips the host's (not adapted) mission put on peds/vehicles
+struct _MissionEntityBlip
+{
+    uint8_t isVehicle = 0;
+    int entityId = 0;
+    uint8_t colour = 0;   // eBlipColour (0..8)
+    uint8_t display = 0;  // eBlipDisplay
+    uint8_t scale = 0;
+    uint8_t friendly = 0;
+
+    template <typename Stream>
+    bool Serialize(Stream& stream)
+    {
+        serialize_int(stream, isVehicle, 0, 1);
+        serialize_int(stream, entityId, 0, 1023);
+        serialize_int(stream, colour, 0, 15);
+        serialize_int(stream, display, 0, 3);
+        serialize_int(stream, scale, 0, 7);
+        serialize_int(stream, friendly, 0, 1);
+        return true;
+    }
+};
+
+class MissionEntityBlips : public Packet
+{
+    DEFINE_PACKET_TYPE(MissionEntityBlips, ePacketType::MISSION_ENTITY_BLIPS, ePacketChannel::EVENT);
+
+public:
+    static constexpr int MAX_BLIPS = 48;
+    uint8_t count = 0;
+    _MissionEntityBlip blips[MAX_BLIPS]{};
+
+private:
+    template <typename Stream>
+    bool Serialize(Stream& stream)
+    {
+        serialize_int(stream, count, 0, MAX_BLIPS);
+        for (int i = 0; i < count; i++)
+        {
+            serialize_object(stream, blips[i]);
+        }
+        return true;
+    }
+};
+
+// generic mission sync: the "locate" cylinders (CTheScripts::HighlightImportantArea) of the host's mission
+struct _MissionArea
+{
+    float fromX = 0.0f, fromY = 0.0f, toX = 0.0f, toY = 0.0f, z = 0.0f;
+
+    template <typename Stream>
+    bool Serialize(Stream& stream)
+    {
+        serialize_float(stream, fromX);
+        serialize_float(stream, fromY);
+        serialize_float(stream, toX);
+        serialize_float(stream, toY);
+        serialize_float(stream, z);
+        return true;
+    }
+};
+
+class MissionAreas : public Packet
+{
+    DEFINE_PACKET_TYPE(MissionAreas, ePacketType::MISSION_AREAS, ePacketChannel::EVENT);
+
+public:
+    static constexpr int MAX_AREAS = 12;
+    uint8_t count = 0;
+    _MissionArea areas[MAX_AREAS]{};
+
+private:
+    template <typename Stream>
+    bool Serialize(Stream& stream)
+    {
+        serialize_int(stream, count, 0, MAX_AREAS);
+        for (int i = 0; i < count; i++)
+        {
+            serialize_object(stream, areas[i]);
+        }
+        return true;
+    }
+};
 }  // namespace Packets::Blips
