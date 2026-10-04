@@ -75,7 +75,8 @@ namespace CoopManager
             {"repoMissing", new[]{"Репозиторій з кодом не знайдено (потрібен тільки розробнику)", "Source repository not found (developers only)"}},
             {"unsafeOrigin", new[]{"Remote 'origin' не налаштований або вказує на оригінальний репозиторій Tornamic. Дозволено працювати тільки з нашими репозиторіями.", "Remote 'origin' is not set or points to the original Tornamic repository. Only our own repositories are allowed."}},
             {"dirtyTree", new[]{"У репозиторії з кодом є незакомічені зміни. Закомітьте їх перед публікацією, щоб реліз відповідав коду.", "The source repository has uncommitted changes. Commit them before publishing so the release matches the source."}},
-            {"confirmPublish", new[]{"Опублікувати нову версію у публічний репозиторій {0}?\n\nДо релізу буде додано архів коду цієї версії (вимога ліцензії GPL-3).", "Publish a new version to the public repository {0}?\n\nA source archive of this version is included (GPL-3 license requirement)."}},
+            {"confirmPublish", new[]{"Опублікувати нову версію у публічний репозиторій {0}?\n\nУ README релізу буде посилання на код цієї версії (вимога ліцензії GPL-3).", "Publish a new version to the public repository {0}?\n\nThe release README links to the source of this version (GPL-3 license requirement)."}},
+            {"notPushed", new[]{"Спочатку запуште коміти в репозиторій з кодом: реліз має відповідати опублікованому коду.", "Push your commits to the source repository first: the release must match the published source."}},
             {"releaseDirMissing", new[]{"Локальна копія релізного репозиторію не знайдена: {0}", "Local release clone not found: {0}"}},
             {"selfUpdated", new[]{"Менеджер оновлено — перезапустіть його.", "The manager was updated — please restart it."}},
             {"serial", new[]{"Серійний ключ бета-тесту", "Beta test serial key"}},
@@ -572,15 +573,20 @@ namespace CoopManager
         }
 
         // the commit sha of the release branch, so that manifest and files are read from the same snapshot
+        // falls back to the branch name when the anonymous GitHub API limit (60/hour per IP) is exhausted
         string HeadSha()
         {
-            using (var wc = Client())
+            try
             {
-                string json = wc.DownloadString("https://api.github.com/repos/" + s.ReleaseRepo + "/commits/main");
-                var m = Regex.Match(json, "\"sha\"\\s*:\\s*\"([0-9a-f]{40})\"");
-                if (!m.Success) throw new Exception("cannot read release commit");
-                return m.Groups[1].Value;
+                using (var wc = Client())
+                {
+                    string json = wc.DownloadString("https://api.github.com/repos/" + s.ReleaseRepo + "/commits/main");
+                    var m = Regex.Match(json, "\"sha\"\\s*:\\s*\"([0-9a-f]{40})\"");
+                    if (m.Success) return m.Groups[1].Value;
+                }
             }
+            catch (WebException ex) { log("GitHub API unavailable (" + ex.Message + "), using the main branch"); }
+            return "main";
         }
 
         string RawUrl(string sha, string path) { return "https://raw.githubusercontent.com/" + s.ReleaseRepo + "/" + sha + "/" + path; }
@@ -600,7 +606,7 @@ namespace CoopManager
         {
             string sha;
             var remote = FetchRemote(out sha);
-            log("release " + remote.Version + " (" + sha.Substring(0, 7) + ")");
+            log("release " + remote.Version + " (" + (sha.Length > 7 ? sha.Substring(0, 7) : sha) + ")");
             Directory.CreateDirectory(pkgDir);
             bool managerChanged = false;
             using (var wc = Client())
@@ -819,26 +825,33 @@ namespace CoopManager
             if (relOrigin.Length == 0 || Git.IsUpstream(relOrigin) || relOrigin.IndexOf(s.ReleaseRepo, StringComparison.OrdinalIgnoreCase) < 0)
                 throw new Exception(L.T("unsafeOrigin") + " (" + relOrigin + ")");
             if (git.IsDirty()) throw new Exception(L.T("dirtyTree"));
+
+            // GPL-3: the published binaries must match source that is publicly available,
+            // so the exact commit has to be pushed to our (public) source repo first
+            string fetchOutput;
+            git.Run("fetch origin", out fetchOutput);
+            if (git.Get("rev-list --count origin/main..HEAD") != "0") throw new Exception(L.T("notPushed"));
             if (!confirm(relOrigin)) return;
 
             var inst = new Installer(s, log);
             inst.AssembleFromBuild(s.ReleaseDir, true);
 
-            // GPL-3: binaries are conveyed together with the corresponding source of the same commit
-            string head = git.Get("rev-parse --short HEAD");
             string srcDir = Path.Combine(s.ReleaseDir, "source");
             if (Directory.Exists(srcDir)) Directory.Delete(srcDir, true);
-            Directory.CreateDirectory(srcDir);
-            string zip = Path.Combine(srcDir, "sa_dream_mod-source-" + head + ".zip");
-            if (runTool("git", "archive --format=zip -o \"" + zip + "\" HEAD", s.SourceDir) != 0) throw new Exception("git archive failed");
+            File.Copy(Path.Combine(s.SourceDir, "LICENSE"), Path.Combine(s.ReleaseDir, "LICENSE"), true);
 
+            string head = git.Get("rev-parse HEAD");
+            string sourceUrl = Regex.Replace(git.OriginUrl(), @"\.git$", "");
             string readme = Path.Combine(s.ReleaseDir, "README.md");
             File.WriteAllText(readme,
                 "# sa_dream_mod — release\n\n" +
                 "Prebuilt files of our CoopAndreas build. Install and update them with `CoopAndreasManager.exe`.\n\n" +
                 "Готові файли нашої збірки CoopAndreas. Встановлення й оновлення — через `CoopAndreasManager.exe`.\n\n" +
+                "1. Download / завантажте `CoopAndreasManager.exe` (open the file → Download raw file).\n" +
+                "2. Settings / Налаштування: game folder + archive or folder with `gta_sa.exe` 1.0 US.\n" +
+                "3. Install → Update and install / Встановлення → Оновити і встановити.\n\n" +
                 "- `gta_sa.exe` 1.0 US is NOT included / НЕ входить у реліз.\n" +
-                "- Source code of this exact version (GPL-3.0): `source/`.\n" +
+                "- Source code of this exact version (GPL-3.0): " + sourceUrl + "/tree/" + head + "\n" +
                 "- Based on [CoopAndreas](https://github.com/Tornamic/CoopAndreas) (GPL-3.0).\n", new UTF8Encoding(false));
 
             string version = Manifest.Load(s.ReleaseDir).Version;
