@@ -104,7 +104,7 @@ void CNetwork::HandlePlayerDisconnected(ENetEvent& event)
 
     CNetworkVehicle* vehicle = CNetworkVehicleManager::GetVehicle(pNetworkPlayer->m_nVehicleId);
 
-    if (vehicle != nullptr)
+    if (vehicle != nullptr && pNetworkPlayer->m_nSeatId >= 0 && pNetworkPlayer->m_nSeatId < 8)
     {
         vehicle->m_pPlayers[pNetworkPlayer->m_nSeatId] = nullptr;
     }
@@ -114,13 +114,24 @@ void CNetwork::HandlePlayerDisconnected(ENetEvent& event)
         Packets::Scripts::g_pLastEnExPlayerOwner = nullptr;
     }
 
-    logger::info("[net] %s disconnected, removing their hosted entities (peds=%d vehicles=%d before)",
+    logger::info("[net] %s disconnected, migrating their hosted entities (peds=%d vehicles=%d total)",
         pNetworkPlayer->GetName().c_str(), (int)CNetworkPedManager::m_pPeds.size(),
         (int)CNetworkVehicleManager::m_pVehicles.size());
-    CNetworkPedManager::RemoveAllHostedAndNotify(pNetworkPlayer);
-    CNetworkVehicleManager::RemoveAllHostedAndNotify(pNetworkPlayer);
 
+    // remove the player first so it can't be picked as the new syncer
     CNetworkPlayerManager::Remove(pNetworkPlayer);
+    CNetworkPedManager::MigrateAllHosted(pNetworkPlayer, true);
+    CNetworkVehicleManager::MigrateAllHosted(pNetworkPlayer, true);
+
+    // vehicles that keep existing must forget the leaving occupant
+    for (auto* pVehicle : CNetworkVehicleManager::m_pVehicles)
+    {
+        for (auto& occupant : pVehicle->m_pPlayers)
+        {
+            if (occupant == pNetworkPlayer)
+                occupant = nullptr;
+        }
+    }
 
     Packets::System::PlayerDisconnected playerDisconnected{};
     playerDisconnected.payload.playerid = pNetworkPlayer->m_iPlayerId;

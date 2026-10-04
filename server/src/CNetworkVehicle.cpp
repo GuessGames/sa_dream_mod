@@ -9,7 +9,7 @@ CNetworkVehicle::CNetworkVehicle(int vehicleid, unsigned short model, CVector po
     m_vecRotation = CVector(0, 0, 0);
 }
 
-void CNetworkVehicle::ReassignSyncer(CNetworkPlayer* newSyncer)
+void CNetworkVehicle::ReassignSyncer(CNetworkPlayer* newSyncer, bool notifyOld)
 {
     if (m_pSyncer != newSyncer)
     {
@@ -19,12 +19,14 @@ void CNetworkVehicle::ReassignSyncer(CNetworkPlayer* newSyncer)
         packet.vehicleid = m_nVehicleId;
 
         // send to the old vehicle syncer
-        if (m_pSyncer)
+        if (m_pSyncer && notifyOld)
         {
+            packet.syncing = false;
             GetPacketFactory().Send(packet, m_pSyncer);
         }
 
         // send to the new
+        packet.syncing = true;
         GetPacketFactory().Send(packet, newSyncer);
 
         m_pSyncer = newSyncer;

@@ -389,6 +389,22 @@ public:
     }
 };
 
+// the player opened the pause menu (or closed it): the server moves his entities to another player meanwhile
+class PlayerPauseState : public Packet
+{
+    DEFINE_PACKET_TYPE(PlayerPauseState, ePacketType::PLAYER_PAUSE_STATE, ePacketChannel::EVENT);
+
+public:
+    bool paused = false;
+
+    template <typename Stream>
+    bool Serialize(Stream& stream)
+    {
+        serialize_bool(stream, paused);
+        return true;
+    }
+};
+
 class RespawnPlayer : public Packet
 {
     DEFINE_PACKET_TYPE(RespawnPlayer, ePacketType::RESPAWN_PLAYER, ePacketChannel::EVENT);

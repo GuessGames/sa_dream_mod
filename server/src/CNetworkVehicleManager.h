@@ -10,4 +10,6 @@ public:
     static CNetworkVehicle* GetVehicle(int vehicleid);
     static int GetFreeID();
     static void RemoveAllHostedAndNotify(CNetworkPlayer* player);
+    // moves every vehicle hosted by `from` to the nearest other active player; removes them if there is nobody
+    static void MigrateAllHosted(CNetworkPlayer* from, bool removeIfNobody);
 };

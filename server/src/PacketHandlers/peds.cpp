@@ -73,13 +73,8 @@ PACKET_HANDLER(ePacketType::PED_REMOVE, Packets::Peds::PedRemove* pPedRemove, CN
         // check if this player has claimed the ped
         if (std::find(p->m_vPedClaims.begin(), p->m_vPedClaims.end(), pNetworkPed) != p->m_vPedClaims.end())
         {
-            // assign ped's syncer to this player
-            pNetworkPed->m_pSyncer = p;
-
-            // send ASSIGN_PED packet to the new host player to notify them they now own the ped
-            Packets::Peds::AssignPedSyncer assignPedPacket{};
-            assignPedPacket.pedid = pNetworkPed->m_nPedId;
-            GetPacketFactory().Send(assignPedPacket, p);
+            // assign ped's syncer to this player (the old syncer already removed it locally)
+            CNetworkPedManager::AssignSyncer(pNetworkPed, p, false);
 
             // send PED_SPAWN packet to the old syncer (peer) so it can respawn the ped locally
             Packets::Peds::PedSpawn pedSpawnPacket{};
@@ -160,6 +155,7 @@ PACKET_HANDLER(
 
     pNetworkVehicle->m_bUsedByPed = true;
     pNetworkVehicle->m_vecPosition = pPedDriverUpdate->pos;
+    pNetworkPed->m_vecPos = pPedDriverUpdate->pos;
     pNetworkVehicle->m_vecRotation = pPedDriverUpdate->rot;
 
     GetPacketFactory().SendToAll(*pPedDriverUpdate, pNetworkPlayer);
@@ -259,14 +255,7 @@ PACKET_HANDLER(ePacketType::PED_RESET_ALL_CLAIMS, Packets::Peds::PedResetAllClai
         {
             if (pNetworkPlayer->m_bIsHost && pNetworkPed->m_pSyncer != nullptr)
             {
-                // here was a bug that i have not understood yet
-
-                Packets::Peds::AssignPedSyncer assignPedPacket{};
-                assignPedPacket.pedid = pPedResetAllClaims->pedid;
-                GetPacketFactory().Send(assignPedPacket, pNetworkPlayer);
-                GetPacketFactory().Send(assignPedPacket, pNetworkPed->m_pSyncer);  // unassign old
-
-                pNetworkPed->m_pSyncer = pNetworkPlayer;
+                CNetworkPedManager::AssignSyncer(pNetworkPed, pNetworkPlayer);
             }
 
             for (auto p : CNetworkPlayerManager::m_pPlayers)
@@ -290,17 +279,11 @@ PACKET_HANDLER(ePacketType::PED_TAKE_HOST, Packets::Peds::PedTakeHost* pPedTakeH
     {
         if (pNetworkPed->m_pSyncer != pNetworkPlayer && pNetworkPlayer->m_bIsHost)
         {
-            Packets::Peds::AssignPedSyncer assignPedPacket{};
-            assignPedPacket.pedid = pPedTakeHost->pedid;
-            GetPacketFactory().Send(assignPedPacket, pNetworkPlayer);
-
             auto it = std::find(pNetworkPlayer->m_vPedClaims.begin(), pNetworkPlayer->m_vPedClaims.end(), pNetworkPed);
             if (it != pNetworkPlayer->m_vPedClaims.end())
             {
                 pNetworkPlayer->m_vPedClaims.erase(it);
             }
-
-            GetPacketFactory().Send(assignPedPacket, pNetworkPed->m_pSyncer);
 
             if (pPedTakeHost->allowReturnToPreviousHost)
             {
@@ -311,7 +294,7 @@ PACKET_HANDLER(ePacketType::PED_TAKE_HOST, Packets::Peds::PedTakeHost* pPedTakeH
                 }
             }
 
-            pNetworkPed->m_pSyncer = pNetworkPlayer;
+            CNetworkPedManager::AssignSyncer(pNetworkPed, pNetworkPlayer);
         }
     }
 }

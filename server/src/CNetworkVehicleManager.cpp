@@ -31,13 +31,50 @@ CNetworkVehicle* CNetworkVehicleManager::GetVehicle(int vehicleid)
 
 int CNetworkVehicleManager::GetFreeID()
 {
+    // don't hand out a just freed id again: late packets of the old vehicle would be applied to the new one
+    static int nextId = 0;
     for (int i = 0; i < Config::MAX_SERVER_VEHICLES; i++)
     {
-        if (CNetworkVehicleManager::GetVehicle(i) == nullptr)
-            return i;
+        int id = (nextId + i) % Config::MAX_SERVER_VEHICLES;
+        if (CNetworkVehicleManager::GetVehicle(id) == nullptr)
+        {
+            nextId = (id + 1) % Config::MAX_SERVER_VEHICLES;
+            return id;
+        }
     }
 
     return -1;
+}
+
+void CNetworkVehicleManager::MigrateAllHosted(CNetworkPlayer* from, bool removeIfNobody)
+{
+    for (auto it = m_pVehicles.begin(); it != m_pVehicles.end();)
+    {
+        CNetworkVehicle* vehicle = *it;
+        if (vehicle->m_pSyncer != from)
+        {
+            ++it;
+            continue;
+        }
+
+        if (CNetworkPlayer* to = CNetworkPlayerManager::PickSyncer(from, vehicle->m_vecPosition, removeIfNobody))
+        {
+            vehicle->ReassignSyncer(to, !removeIfNobody);
+            ++it;
+        }
+        else if (removeIfNobody)
+        {
+            Packets::Vehicles::VehicleRemove packet{};
+            packet.vehicleid = vehicle->m_nVehicleId;
+            GetPacketFactory().SendToAll(packet, from);
+            delete vehicle;
+            it = m_pVehicles.erase(it);
+        }
+        else
+        {
+            ++it;
+        }
+    }
 }
 
 void CNetworkVehicleManager::RemoveAllHostedAndNotify(CNetworkPlayer* player)

@@ -7,6 +7,7 @@ PACKET_HANDLER(
     ePacketType::PLAYER_ONFOOT_UPDATE, Packets::Players::OnFootUpdate* pOnFootUpdate, CNetworkPlayer* pNetworkPlayer)
 {
     pOnFootUpdate->playerid.value = pNetworkPlayer->m_iPlayerId;
+    pNetworkPlayer->m_vecPosition = pOnFootUpdate->vecPos;
     GetPacketFactory().SendToAll(*pOnFootUpdate, pNetworkPlayer);
 }
 
@@ -41,6 +42,34 @@ PACKET_HANDLER(ePacketType::PLAYER_PLACE_WAYPOINT, Packets::Players::PlayerPlace
 
     pPlayerPlaceWaypoint->playerid = pNetworkPlayer->m_iPlayerId;
     GetPacketFactory().SendToAll(*pPlayerPlaceWaypoint, pNetworkPlayer);
+}
+
+PACKET_HANDLER(ePacketType::PLAYER_PAUSE_STATE, Packets::Players::PlayerPauseState* pPauseState, CNetworkPlayer* pNetworkPlayer)
+{
+    if (pNetworkPlayer->m_bPaused == pPauseState->paused)
+        return;
+
+    pNetworkPlayer->m_bPaused = pPauseState->paused;
+    logger::info("[net] %s %s the pause menu", pNetworkPlayer->GetName().c_str(), pPauseState->paused ? "opened" : "closed");
+
+    // a paused game doesn't simulate the world: hand its peds and vehicles to someone who does
+    if (pPauseState->paused)
+    {
+        CNetworkPedManager::MigrateAllHosted(pNetworkPlayer, false);
+        CNetworkVehicleManager::MigrateAllHosted(pNetworkPlayer, false);
+    }
+    else
+    {
+        // back in the game: take over whatever is still owned by players sitting in the pause menu
+        for (auto* other : CNetworkPlayerManager::m_pPlayers)
+        {
+            if (other != pNetworkPlayer && other->m_bPaused)
+            {
+                CNetworkPedManager::MigrateAllHosted(other, false);
+                CNetworkVehicleManager::MigrateAllHosted(other, false);
+            }
+        }
+    }
 }
 
 PACKET_HANDLER(ePacketType::RESPAWN_PLAYER, Packets::Players::RespawnPlayer* pRespawnPlayer, CNetworkPlayer* pNetworkPlayer)

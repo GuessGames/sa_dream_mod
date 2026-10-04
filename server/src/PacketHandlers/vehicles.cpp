@@ -45,6 +45,7 @@ PACKET_HANDLER(
             GetPacketFactory().SendToAll(*pVehicleRemove, pNetworkPlayer);
 
             CNetworkVehicleManager::Remove(vehicle);
+            delete vehicle;
         }
         else
         {
@@ -83,6 +84,7 @@ PACKET_HANDLER(ePacketType::VEHICLE_DRIVER_UPDATE, Packets::Vehicles::VehicleDri
     {
         pNetworkVehicle->SetOccupant(0, pNetworkPlayer);
         pNetworkVehicle->m_vecPosition = pVehicleDriverUpdate->pos;
+        pNetworkPlayer->m_vecPosition = pVehicleDriverUpdate->pos;
         pNetworkVehicle->m_vecRotation = pVehicleDriverUpdate->rot;
         pNetworkVehicle->m_bUsedByPed = false;
         pNetworkVehicle->ReassignSyncer(pNetworkPlayer);
@@ -185,6 +187,7 @@ PACKET_HANDLER(ePacketType::VEHICLE_PASSENGER_UPDATE,
     if (auto pNetworkVehicle = CNetworkVehicleManager::GetVehicle(pVehiclePassengerUpdate->vehicleid))
     {
         pVehiclePassengerUpdate->playerid = pNetworkPlayer->m_iPlayerId;
+        pNetworkPlayer->m_vecPosition = pNetworkVehicle->m_vecPosition;
         GetPacketFactory().SendToAll(*pVehiclePassengerUpdate, pNetworkPlayer);
 
         pNetworkVehicle->SetOccupant(pVehiclePassengerUpdate->seatid + 1, pNetworkPlayer);

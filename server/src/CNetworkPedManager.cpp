@@ -32,13 +32,73 @@ CNetworkPed* CNetworkPedManager::GetPed(int pedid)
 
 int CNetworkPedManager::GetFreeId()
 {
+    // don't hand out a just freed id again: late packets of the old ped would be applied to the new one
+    static int nextId = 0;
     for (int i = 0; i < Config::MAX_SERVER_PEDS; i++)
     {
-        if (CNetworkPedManager::GetPed(i) == nullptr)
-            return i;
+        int id = (nextId + i) % Config::MAX_SERVER_PEDS;
+        if (CNetworkPedManager::GetPed(id) == nullptr)
+        {
+            nextId = (id + 1) % Config::MAX_SERVER_PEDS;
+            return id;
+        }
     }
 
     return -1;
+}
+
+void CNetworkPedManager::AssignSyncer(CNetworkPed* ped, CNetworkPlayer* newSyncer, bool notifyOld)
+{
+    Packets::Peds::AssignPedSyncer packet{};
+    packet.pedid = ped->m_nPedId;
+
+    if (notifyOld && ped->m_pSyncer && ped->m_pSyncer != newSyncer)
+    {
+        packet.syncing = false;
+        GetPacketFactory().Send(packet, ped->m_pSyncer);
+    }
+
+    if (newSyncer)
+    {
+        packet.syncing = true;
+        GetPacketFactory().Send(packet, newSyncer);
+    }
+
+    logger::info("[ped] syncer of id=%d: %s -> %s", ped->m_nPedId,
+        ped->m_pSyncer ? ped->m_pSyncer->GetName().c_str() : "none", newSyncer ? newSyncer->GetName().c_str() : "none");
+    ped->m_pSyncer = newSyncer;
+}
+
+void CNetworkPedManager::MigrateAllHosted(CNetworkPlayer* from, bool removeIfNobody)
+{
+    for (auto it = m_pPeds.begin(); it != m_pPeds.end();)
+    {
+        CNetworkPed* ped = *it;
+        if (ped->m_pSyncer != from)
+        {
+            ++it;
+            continue;
+        }
+
+        if (CNetworkPlayer* to = CNetworkPlayerManager::PickSyncer(from, ped->m_vecPos, removeIfNobody))
+        {
+            // a disconnected player can't receive packets anymore
+            AssignSyncer(ped, to, !removeIfNobody);
+            ++it;
+        }
+        else if (removeIfNobody)
+        {
+            Packets::Peds::PedRemove packet{};
+            packet.pedid = ped->m_nPedId;
+            GetPacketFactory().SendToAll(packet, from);
+            delete ped;
+            it = m_pPeds.erase(it);
+        }
+        else
+        {
+            ++it;
+        }
+    }
 }
 
 void CNetworkPedManager::RemoveAllHostedAndNotify(CNetworkPlayer* player)

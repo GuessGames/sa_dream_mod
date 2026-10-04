@@ -417,12 +417,15 @@ class AssignVehicleSyncer : public Packet
 
 public:
     int vehicleid{};
+    // explicit state instead of a toggle: a lost/ignored packet can't invert the ownership forever
+    bool syncing = true;
 
 private:
     template <typename Stream>
     bool Serialize(Stream& stream)
     {
         serialize_int(stream, vehicleid, 0, Config::MAX_SERVER_VEHICLES - 1);
+        serialize_bool(stream, syncing);
 
         return true;
     }

@@ -64,6 +64,35 @@ CNetworkPlayer* CNetworkPlayerManager::GetHost()
     return nullptr;
 }
 
+CNetworkPlayer* CNetworkPlayerManager::PickSyncer(CNetworkPlayer* except, const CVector& pos, bool allowPaused)
+{
+    CNetworkPlayer* best = nullptr;
+    float bestDist = 0.0f;
+    for (auto* player : m_pPlayers)
+    {
+        if (player == except || player->m_bPaused)
+            continue;
+
+        CVector d = player->m_vecPosition - pos;
+        float dist = d.x * d.x + d.y * d.y + d.z * d.z;
+        if (!best || dist < bestDist)
+        {
+            best = player;
+            bestDist = dist;
+        }
+    }
+
+    if (!best && allowPaused)
+    {
+        for (auto* player : m_pPlayers)
+        {
+            if (player != except)
+                return player;
+        }
+    }
+    return best;
+}
+
 void CNetworkPlayerManager::AssignHostToFirstPlayer()
 {
     if (CNetworkPlayerManager::m_pPlayers.size() <= 0)

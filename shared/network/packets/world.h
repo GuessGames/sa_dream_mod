@@ -202,4 +202,47 @@ private:
     }
 };
 
+// a pickup dropped in the world by its owner (money/weapons of a dead ped); netId = (creator playerid << 24) | counter
+class PickupCreate : public Packet
+{
+    DEFINE_PACKET_TYPE(PickupCreate, ePacketType::PICKUP_CREATE, ePacketChannel::EVENT);
+
+public:
+    uint32_t netId = 0;
+    uint16_t modelId = 0;
+    uint8_t pickupType = 0;
+    uint32_t ammo = 0;
+    uint16_t moneyPerDay = 0;
+    CVector pos{};
+
+    template <typename Stream>
+    bool Serialize(Stream& stream)
+    {
+        serialize_uint32(stream, netId);
+        serialize_uint16(stream, modelId);
+        serialize_uint8(stream, pickupType);
+        serialize_uint32(stream, ammo);
+        serialize_uint16(stream, moneyPerDay);
+        serialize_float(stream, pos.x);
+        serialize_float(stream, pos.y);
+        serialize_float(stream, pos.z);
+        return true;
+    }
+};
+
+// the pickup was collected by someone: remove it everywhere
+class PickupRemove : public Packet
+{
+    DEFINE_PACKET_TYPE(PickupRemove, ePacketType::PICKUP_REMOVE, ePacketChannel::EVENT);
+
+public:
+    uint32_t netId = 0;
+
+    template <typename Stream>
+    bool Serialize(Stream& stream)
+    {
+        serialize_uint32(stream, netId);
+        return true;
+    }
+};
 }  // namespace Packets::World

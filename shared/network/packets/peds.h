@@ -76,12 +76,15 @@ class AssignPedSyncer : public Packet
 
 public:
     int pedid;
+    // explicit state instead of a toggle: a lost/ignored packet can't invert the ownership forever
+    bool syncing = true;
 
 private:
     template <typename Stream>
     bool Serialize(Stream& stream)
     {
         serialize_int(stream, pedid, 0, Config::MAX_SERVER_PEDS - 1);
+        serialize_bool(stream, syncing);
         return true;
     }
 };

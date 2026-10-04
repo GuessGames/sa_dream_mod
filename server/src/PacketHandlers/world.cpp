@@ -36,3 +36,17 @@ PACKET_HANDLER(ePacketType::UPDATE_MOON_SIZE, Packets::World::UpdateMoonSize* pU
 {
 	GetPacketFactory().SendToAll(*pUpdateMoonSize, pNetworkPlayer);
 }
+PACKET_HANDLER(ePacketType::PICKUP_CREATE, Packets::World::PickupCreate* pPickupCreate, CNetworkPlayer* pNetworkPlayer)
+{
+    // the creator's player id lives in the top byte, so ids of different players never collide
+    pPickupCreate->netId = (static_cast<uint32_t>(pNetworkPlayer->m_iPlayerId) << 24) | (pPickupCreate->netId & 0xFFFFFF);
+    logger::info("[pickup] CREATE net=%08X model=%d type=%d by %s", pPickupCreate->netId, pPickupCreate->modelId,
+        pPickupCreate->pickupType, pNetworkPlayer->GetName().c_str());
+    GetPacketFactory().SendToAll(*pPickupCreate, pNetworkPlayer);
+}
+
+PACKET_HANDLER(ePacketType::PICKUP_REMOVE, Packets::World::PickupRemove* pPickupRemove, CNetworkPlayer* pNetworkPlayer)
+{
+    logger::info("[pickup] REMOVE net=%08X by %s", pPickupRemove->netId, pNetworkPlayer->GetName().c_str());
+    GetPacketFactory().SendToAll(*pPickupRemove, pNetworkPlayer);
+}

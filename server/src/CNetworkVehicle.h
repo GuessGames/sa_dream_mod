@@ -27,7 +27,7 @@ public:
     uint8_t m_nCreatedBy;
     bool m_bUsedByPed = false;
 
-    void ReassignSyncer(CNetworkPlayer* newSyncer);
+    void ReassignSyncer(CNetworkPlayer* newSyncer, bool notifyOld = true);
     void SetOccupant(int8_t seatid, CNetworkPlayer* player);
 
     ~CNetworkVehicle() {}
