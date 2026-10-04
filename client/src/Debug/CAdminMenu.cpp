@@ -335,6 +335,24 @@ void CAdminMenu::Process()
         authenticatedAt = 0;
     else if (!authenticatedAt)
         authenticatedAt = GetTickCount();
+    if (CCore::ms_bTestOutfit && authenticatedAt && GetTickCount() - authenticatedAt > 5000 && !ped->m_nPedFlags.bInVehicle)
+    {
+        CCore::ms_bTestOutfit = false;
+        CStats::SetStatValue(STAT_FAT, 995.0f);
+        CStats::SetStatValue(STAT_MUSCLE, 10.0f);
+        CPedClothesDesc* desc = ped->m_pPlayerData->m_pPedClothesDesc;
+        desc->SetTextureAndModel("player_torso", "torso", 0);
+        desc->SetTextureAndModel("afrotash", "afro", 1);
+        desc->SetTextureAndModel("tracktrwhstr", "tracktr", 2);
+        desc->SetTextureAndModel("sandalsock", "flipflop", 3);
+        desc->SetTextureAndModel("11grove3", nullptr, 11);
+        desc->SetTextureAndModel("neckropeg", "neck2", 13);
+        desc->SetTextureAndModel("watchgno", "watch", 14);
+        desc->SetTextureAndModel("groucho", "grouchos", 15);
+        CClothes::RebuildPlayer(ped, false);
+        SetStatus("-testoutfit: test clothes and fat 995 applied");
+    }
+
     if (CCore::ms_nTestMission >= 0 && authenticatedAt && CLocalPlayer::m_bIsHost && GetTickCount() - authenticatedAt > 15000 &&
         !IsMissionActive() && !FrontEndMenuManager.m_bMenuActive)
     {

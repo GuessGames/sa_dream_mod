@@ -1,9 +1,10 @@
 # Reproduces crashes: a separate server on port 6768 + two game windows (profiles 1 and 2) that connect by themselves.
 # The host (first to connect) starts mission -mission <id> by itself (-1 = none), e.g. 13 = Tagging Up Turf.
+# -outfitProfile 2: that window wears other clothes and fat 995 after connecting (clothes/cutscene tests).
 # Never touches a running server of the user (own copy, own port) and aborts if a game is already running.
 # Prints the new crash reports and the important log lines, then closes everything it started.
 #   powershell -ExecutionPolicy Bypass -File tools\crash\test_two_windows.ps1 -mission 13 -runSeconds 120
-param([int]$mission = 13, [int]$runSeconds = 90, [string]$gameDir = "D:\Grand Theft Auto San Andreas", [string]$serverExe = "")
+param([int]$mission = 13, [int]$runSeconds = 90, [string]$gameDir = "D:\Grand Theft Auto San Andreas", [string]$serverExe = "", [int]$outfitProfile = 0)
 $work = Join-Path $env:TEMP "sadream_crash_test"
 $g = $gameDir
 if (-not $serverExe) { $serverExe = "$g\CoopAndreasServer\server.exe" }
@@ -33,6 +34,7 @@ foreach ($p in 1, 2) {
     $lines += "nickname=Tester$p", "ip=127.0.0.1", "port=$port"
     Set-Content $ini $lines -Encoding ascii
     $extra = if ($p -eq 1 -and $mission -ge 0) { " -testmission $mission" } else { "" }
+    if ($p -eq $outfitProfile) { $extra += " -testoutfit" }
     $games += Start-Process "$g\gta_sa.exe" -PassThru -ArgumentList "--coop -id $pcid -serial $($k.Serialkey) -profile $p --coopd$($p-1) -autoconnect$extra" -WorkingDirectory $g
     Start-Sleep 2
 }

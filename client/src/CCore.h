@@ -15,6 +15,8 @@ public:
 	static inline bool ms_bAutoConnect = false;
 	// -testmission N: the host launches mission N by itself after connecting (automated mission tests)
 	static inline int ms_nTestMission = -1;
+	// -testoutfit: after connecting this window wears other clothes and fat 995 (automated clothes/cutscene tests)
+	static inline bool ms_bTestOutfit = false;
 
 	static semver_t Version;
 	static inline injector::game_version_manager gvm{};

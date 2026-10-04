@@ -337,4 +337,15 @@ void CUtil::RebuildRemotePlayer(CPlayerPed* ped)
 
     CStats::StatTypesFloat[STAT_FAT] = localFat;
     CStats::StatTypesFloat[STAT_MUSCLE] = localMuscle;
+
+    // The game has ONE "player" model (clump, composited clothes textures, previous-clothes record) and assumes it is
+    // the local player's: cutscenes build the cutscene player from it (crash in CClothesBuilder after another player
+    // was rebuilt) and the game re-dresses the local player from it. Rebuild the local player last so it is ours again.
+    CPlayerPed* pLocalPlayer = FindPlayerPed(0);
+    if (pLocalPlayer && pLocalPlayer != ped && pLocalPlayer->m_pRwClump && pLocalPlayer->m_pPlayerData)
+    {
+        ms_bRestoringLocalPlayerModel = true;
+        CClothes::RebuildPlayer(pLocalPlayer, false);
+        ms_bRestoringLocalPlayerModel = false;
+    }
 }

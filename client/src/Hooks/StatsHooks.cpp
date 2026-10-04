@@ -66,7 +66,7 @@ void __fastcall CPed__Dress_Hook(CPed* This, SKIP_EDX)
 
 	if (CNetwork::m_bAuthenticated)
 	{
-		if (This == FindPlayerPed(0))
+		if (This == FindPlayerPed(0) && !CUtil::ms_bRestoringLocalPlayerModel)
 		{
 			Packets::Players::RebuildPlayer packet{};
 			packet.clothesDesc = *FindPlayerPed(0)->m_pPlayerData->m_pPedClothesDesc;

@@ -134,6 +134,13 @@ def read_minidump(path):
         for i in range(struct.unpack_from("<I", d, mrva)[0]):
             start, size, drva = struct.unpack_from("<QII", d, mrva + 4 + i * 16)
             memory.append((start, d[drva:drva + size]))
+    if 9 in streams:  # full dumps ("Save Dump" in the crash dialog): Memory64ListStream, data stored back to back
+        mrva = streams[9][1]
+        n, data_rva = struct.unpack_from("<QQ", d, mrva)
+        for i in range(n):
+            start, size = struct.unpack_from("<QQ", d, mrva + 16 + i * 16)
+            memory.append((start, d[data_rva:data_rva + size]))
+            data_rva += size
     modules = {}
     if 4 in streams:
         lrva = streams[4][1]
@@ -274,7 +281,7 @@ def analyze(path):
     # the minidump next to the report has the whole stack of the crashed thread: every value that points right
     # behind a CALL instruction is a real return address (much better than the frame walk, which stops early)
     dump = os.path.splitext(path)[0] + ".dmp"
-    md = read_minidump(dump) if os.path.exists(dump) and os.path.getsize(dump) < 64 * 1024 * 1024 else None
+    md = read_minidump(dump) if os.path.exists(dump) and os.path.getsize(dump) < 2048 * 1024 * 1024 else None
     if md:
         esp, eip, memory, modules = md
         # reports from before the fix walked the stack in the context itself: the report's ESP is the real one
