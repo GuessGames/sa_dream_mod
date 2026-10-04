@@ -20,6 +20,7 @@ public:
 	static CNetworkPed* GetNetworkPedByTask(CTask* targetTask);
 	static bool IsPedHasJetpack(CPed* ped);
 	static void SetPlayerJetpack(CNetworkPlayer* ped, bool set);
+	static void RebuildRemotePlayer(CPlayerPed* ped);
 	static std::string GetWeaponName(eWeaponType type);
 	static float HUD_X(float a) { return a * RsGlobal.maximumWidth / SCREEN_BASE_WIDTH; }
 	static float HUD_Y(float a) { return a * RsGlobal.maximumHeight / SCREEN_BASE_HEIGHT; }

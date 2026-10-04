@@ -233,6 +233,15 @@ void CNetwork::HandlePlayerConnected(ENetPeer* pENetPeer, Packets::System::Playe
             GetPacketFactory().Send(rebuildPacket, pNewNetworkPlayer);
         }
 
+        if (i->m_bPaused || i->m_bAfk)
+        {
+            Packets::Players::PlayerPauseState pauseState{};
+            pauseState.playerid = i->m_iPlayerId;
+            pauseState.paused = i->m_bPaused;
+            pauseState.afk = i->m_bAfk;
+            GetPacketFactory().Send(pauseState, pNewNetworkPlayer);
+        }
+
         if (i->m_waypointState.place)
         {
             i->m_waypointState.playerid = i->m_iPlayerId;

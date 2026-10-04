@@ -5,6 +5,8 @@
 #include <imgui.h>
 #include <CCheat.h>
 #include <CDebugVehicleSpawner.h>
+#include <fstream>
+#include <sstream>
 
 namespace
 {
@@ -139,11 +141,25 @@ void ReplaceMission(int id)
     }
 }
 
-void Teleport(CVector pos, bool findGround)
+void Teleport(CVector pos, bool findGround, int interior = -1)
 {
     CPlayerPed* ped = FindPlayerPed(0);
     if (!ped)
         return;
+
+    int ref = CPools::GetPedRef(ped);
+    if (interior >= 0 && interior != CGame::currArea)
+    {
+        // cars do not belong in interiors: a passenger or a driver going inside leaves the car
+        if (ped->m_nPedFlags.bInVehicle && ped->m_pVehicle && (interior != 0 || ped->m_pVehicle->m_pDriver != ped))
+            Command<Commands::WARP_CHAR_FROM_CAR_TO_COORD>(ref, pos.x, pos.y, pos.z);
+        Command<Commands::SET_AREA_VISIBLE>(interior);
+        Command<Commands::SET_CHAR_AREA_VISIBLE>(ref, interior);
+    }
+    else if (ped->m_nPedFlags.bInVehicle && ped->m_pVehicle && ped->m_pVehicle->m_pDriver != ped)
+    {
+        Command<Commands::WARP_CHAR_FROM_CAR_TO_COORD>(ref, pos.x, pos.y, pos.z);
+    }
 
     Command<Commands::REQUEST_COLLISION>(pos.x, pos.y);
     Command<Commands::LOAD_SCENE>(pos.x, pos.y, pos.z);
@@ -187,6 +203,110 @@ void HostOnlyNote()
     ImGui::TextColored(ImVec4(1.0f, 0.65f, 0.25f, 1.0f), "Це може робити тільки хост (той, хто підключився першим).");
 }
 }  // namespace
+
+// ------------------------------------------------------------------ wardrobe: everything the shops sell
+// read from the game's own data\shopping.dat (clothes, haircuts and tattoos price sections)
+struct SClothesItem
+{
+    std::string texture, model, label;
+    int part;
+};
+std::vector<SClothesItem> clothesItems;
+bool bClothesLoaded = false;
+
+std::string GxtToString(const char* text)
+{
+    std::string out;
+    for (const char* c = text; c && *c; c++)
+    {
+        if (*c == '~')  // skip ~x~ colour codes
+        {
+            const char* end = strchr(c + 1, '~');
+            if (!end)
+                break;
+            c = end;
+            continue;
+        }
+        out += (*c >= 32 && *c < 127) ? *c : '?';
+    }
+    return out;
+}
+
+void LoadClothes()
+{
+    bClothesLoaded = true;
+    std::ifstream file("data\\shopping.dat");
+    std::string line;
+    int mode = 0;  // 1 clothes, 2 haircuts, 3 tattoos
+    bool inPrices = false;
+    while (std::getline(file, line))
+    {
+        size_t hash = line.find('#');
+        if (hash != std::string::npos)
+            line.resize(hash);
+        std::istringstream in(line);
+        std::string first;
+        if (!(in >> first))
+            continue;
+
+        if (first == "section")
+        {
+            std::string name;
+            in >> name;
+            if (name == "prices") inPrices = true;
+            else if (name == "shops") inPrices = false;
+            else if (inPrices) mode = name == "Clothes" ? 1 : name == "Haircuts" ? 2 : name == "Tattoos" ? 3 : 0;
+            continue;
+        }
+        if (first == "end")
+        {
+            mode = 0;
+            continue;
+        }
+        if (!mode)
+            continue;
+
+        SClothesItem item;
+        std::string nametag, model, type;
+        item.texture = first;
+        if (mode == 3)
+        {
+            if (!(in >> nametag >> type))
+                continue;
+        }
+        else
+        {
+            if (!(in >> nametag >> model >> type))
+                continue;
+            item.model = model;
+        }
+        item.part = atoi(type.c_str());
+        if (item.part < 0 || item.part > 17)
+            continue;
+        std::string label = GxtToString(TheText.Get(nametag.c_str()));
+        item.label = label.empty() || label == nametag ? item.texture : label + "  (" + item.texture + ")";
+        clothesItems.push_back(item);
+    }
+    // the default face/hair is not sold anywhere
+    clothesItems.push_back({"player_face", "head", "Default hair (player_face)", 1});
+    logger::info("[admin] wardrobe: %d items from shopping.dat", (int)clothesItems.size());
+}
+
+void ApplyClothes(const char* texture, const char* model, int part)
+{
+    CPlayerPed* ped = FindPlayerPed(0);
+    if (!ped || !ped->m_pPlayerData || !ped->m_pPlayerData->m_pPedClothesDesc)
+        return;
+    ped->m_pPlayerData->m_pPedClothesDesc->SetTextureAndModel(texture, model, part);
+    // the rebuild sends the new look to the other players (CPed::Dress hook)
+    CClothes::RebuildPlayer(ped, false);
+    SetStatus(texture ? std::string("Вдягнено: ") + texture : "Знято");
+}
+
+void CAdminMenu::TeleportLocalPlayer(CVector pos, int interior)
+{
+    Teleport(pos, false, interior);
+}
 
 void CAdminMenu::Init()
 {
@@ -272,6 +392,7 @@ void CAdminMenu::DrawUI()
             if (ImGui::BeginTabItem("Гравець")) { DrawPlayerTab(); ImGui::EndTabItem(); }
             if (ImGui::BeginTabItem("Транспорт")) { DrawVehicleTab(); ImGui::EndTabItem(); }
             if (ImGui::BeginTabItem("Телепорт")) { DrawTeleportTab(); ImGui::EndTabItem(); }
+            if (ImGui::BeginTabItem("Гардероб")) { DrawWardrobeTab(); ImGui::EndTabItem(); }
             if (ImGui::BeginTabItem("Світ")) { DrawWorldTab(); ImGui::EndTabItem(); }
             ImGui::EndTabBar();
         }
@@ -417,6 +538,102 @@ void CAdminMenu::DrawPlayerTab()
         CCheat::VehicleSkillsCheat();
         SetStatus("Навички зброї й водіння на максимумі");
     }
+
+    ImGui::SeparatorText("Статура (бачать усі гравці)");
+    static float fat = -1.0f, muscle = -1.0f;
+    if (fat < 0.0f || ImGui::Button("Взяти з гри", ImVec2(-1.0f, 0.0f)))
+    {
+        fat = CStats::GetStatValue(STAT_FAT);
+        muscle = CStats::GetStatValue(STAT_MUSCLE);
+    }
+    ImGui::SliderFloat("Жир", &fat, 0.0f, 1000.0f, "%.0f");
+    ImGui::SliderFloat("М'язи", &muscle, 0.0f, 1000.0f, "%.0f");
+    struct SBody { const char* name; float fat, muscle; };
+    static const SBody bodies[] = {{"Худий", 0.0f, 0.0f}, {"Звичайний", 200.0f, 200.0f}, {"М'язистий", 0.0f, 1000.0f}, {"Товстий", 1000.0f, 0.0f}};
+    float w4 = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x * 3.0f) / 4.0f;
+    for (int i = 0; i < 4; i++)
+    {
+        if (i) ImGui::SameLine();
+        if (ImGui::Button(bodies[i].name, ImVec2(w4, 0.0f)))
+        {
+            fat = bodies[i].fat;
+            muscle = bodies[i].muscle;
+        }
+    }
+    bool inVehicle = ped->m_nPedFlags.bInVehicle;
+    ImGui::BeginDisabled(inVehicle);
+    if (ImGui::Button("Застосувати статуру", ImVec2(-1.0f, 0.0f)))
+    {
+        CStats::SetStatValue(STAT_FAT, fat);
+        CStats::SetStatValue(STAT_MUSCLE, muscle);
+        CClothes::RebuildPlayer(ped, false);
+        SetStatus("Статура: жир " + std::to_string((int)fat) + ", м'язи " + std::to_string((int)muscle));
+    }
+    ImGui::EndDisabled();
+    if (inVehicle)
+        ImGui::TextDisabled("Статуру й одяг можна змінити, коли ви не в транспорті");
+}
+
+void CAdminMenu::DrawWardrobeTab()
+{
+    CPlayerPed* ped = FindPlayerPed(0);
+    if (!ped)
+        return;
+    if (!bClothesLoaded)
+        LoadClothes();
+
+    struct SPart { const char* name; int part; bool removable; };
+    static const SPart parts[] = {
+        {"Торс", 0, false}, {"Зачіска", 1, false}, {"Ноги", 2, false}, {"Взуття", 3, false},
+        {"Ланцюжок", 13, true}, {"Годинник", 14, true}, {"Окуляри", 15, true}, {"Головний убір", 16, true},
+        {"Костюм", 17, true}, {"Тату: ліве плече", 4, true}, {"Тату: ліве передпліччя", 5, true},
+        {"Тату: праве плече", 6, true}, {"Тату: праве передпліччя", 7, true}, {"Тату: спина", 8, true},
+        {"Тату: груди зліва", 9, true}, {"Тату: груди справа", 10, true}, {"Тату: живіт", 11, true},
+        {"Тату: поперек", 12, true},
+    };
+    static int selected = 0;
+    static char filter[32] = "";
+
+    bool inVehicle = ped->m_nPedFlags.bInVehicle;
+    if (inVehicle)
+        ImGui::TextColored(ImVec4(1.0f, 0.65f, 0.25f, 1.0f), "Вийдіть з транспорту, щоб перевдягнутися");
+    ImGui::TextWrapped("Усе, що продають магазини одягу, перукарні й тату-салони. Інші гравці бачать зміни.");
+
+    ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.5f);
+    if (ImGui::BeginCombo("##part", parts[selected].name))
+    {
+        for (int i = 0; i < IM_ARRAYSIZE(parts); i++)
+            if (ImGui::Selectable(parts[i].name, i == selected))
+                selected = i;
+        ImGui::EndCombo();
+    }
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(-1.0f);
+    ImGui::InputTextWithHint("##clothes_filter", "Пошук", filter, sizeof(filter));
+
+    const SPart& part = parts[selected];
+    ImGui::BeginDisabled(inVehicle);
+    if (part.removable && ImGui::Button("Зняти", ImVec2(-1.0f, 0.0f)))
+        ApplyClothes(nullptr, nullptr, part.part);
+
+    ImGui::BeginChild("##clothes", ImVec2(0.0f, 0.0f), true);
+    unsigned int current = ped->m_pPlayerData && ped->m_pPlayerData->m_pPedClothesDesc ? ped->m_pPlayerData->m_pPedClothesDesc->m_anTextureKeys[part.part] : 0;
+    int shown = 0;
+    for (const auto& item : clothesItems)
+    {
+        if (item.part != part.part || !ContainsNoCase(item.label.c_str(), filter))
+            continue;
+        shown++;
+        bool worn = current && CKeyGen::GetUppercaseKey(item.texture.c_str()) == current;
+        ImGui::PushID(&item);
+        if (ImGui::Selectable(item.label.c_str(), worn))
+            ApplyClothes(item.texture.c_str(), item.model.empty() ? nullptr : item.model.c_str(), item.part);
+        ImGui::PopID();
+    }
+    if (!shown)
+        ImGui::TextDisabled(clothesItems.empty() ? "Не вдалося прочитати data\\shopping.dat" : "Нічого не знайдено");
+    ImGui::EndChild();
+    ImGui::EndDisabled();
 }
 
 void CAdminMenu::DrawVehicleTab()
@@ -501,20 +718,39 @@ void CAdminMenu::DrawTeleportTab()
         Teleport(vecSavedPos, false);
     ImGui::EndDisabled();
 
-    ImGui::SeparatorText("До гравця");
+    ImGui::SeparatorText("Гравці");
     bool any = false;
     for (auto* player : CNetworkPlayerManager::m_pPlayers)
     {
         if (!player || !player->m_pPed)
             continue;
         any = true;
-        std::string label = player->GetName();
-        if (ImGui::Button(label.c_str(), ImVec2(-1.0f, 0.0f)))
+        ImGui::PushID(player->m_iPlayerId);
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted(player->GetName().c_str());
+        if (player->m_bPaused || player->m_bAfk)
+        {
+            ImGui::SameLine();
+            ImGui::TextColored(ImVec4(1.0f, 0.65f, 0.25f, 1.0f), "AFK");
+        }
+        float bw = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) * 0.5f;
+        if (ImGui::Button("До нього", ImVec2(bw, 0.0f)))
         {
             CVector pos = player->m_pPed->GetPosition();
             pos.x += 2.0f;
-            Teleport(pos, false);
+            Teleport(pos, false, player->m_pPed->m_nAreaCode);
         }
+        ImGui::SameLine();
+        if (ImGui::Button("До себе", ImVec2(bw, 0.0f)))
+        {
+            Packets::Players::PlayerBring packet{};
+            packet.targetid = player->m_iPlayerId;
+            packet.pos = ped->GetPosition() + ped->GetForward() * 2.0f;
+            packet.interior = ped->m_nAreaCode;
+            GetPacketFactory().Send(packet);
+            SetStatus(player->GetName() + " переміщується до вас");
+        }
+        ImGui::PopID();
     }
     if (!any)
         ImGui::TextDisabled("Інших гравців немає");

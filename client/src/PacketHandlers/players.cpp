@@ -4,6 +4,7 @@
 #include <CAimSync.h>
 #include <CEntryExitTransitionSync.h>
 #include <CProjectileInfo.h>
+#include "Debug/CAdminMenu.h"
 
 PACKET_HANDLER(ePacketType::PLAYER_ONFOOT_UPDATE, Packets::Players::OnFootUpdate* pOnFootUpdate)
 {
@@ -262,10 +263,32 @@ PACKET_HANDLER(ePacketType::REBUILD_PLAYER, Packets::Players::RebuildPlayer* pRe
             *pPlayerPed->m_pPlayerData->m_pPedClothesDesc = pRebuildPlayer->clothesDesc;
             if (pPlayerPed->m_pRwClump)
             {
-                CClothes::RebuildPlayer(pPlayerPed, false);
+                CUtil::RebuildRemotePlayer(pPlayerPed);
             }
         }
 
         //CStatsSync::ApplyLocalContext();
     }
+}
+
+PACKET_HANDLER(ePacketType::PLAYER_PAUSE_STATE, Packets::Players::PlayerPauseState* pPauseState)
+{
+    auto pNetworkPlayer = CNetworkPlayerManager::GetPlayer(pPauseState->playerid);
+    if (!pNetworkPlayer)
+        return;
+
+    bool wasAway = pNetworkPlayer->m_bPaused || pNetworkPlayer->m_bAfk;
+    bool isAway = pPauseState->paused || pPauseState->afk;
+    pNetworkPlayer->m_bPaused = pPauseState->paused;
+    pNetworkPlayer->m_bAfk = pPauseState->afk;
+
+    if (wasAway != isAway)
+        CChat::AddMessage("[Player] " + pNetworkPlayer->GetName() + (isAway ? " is AFK" : " is back"));
+}
+
+PACKET_HANDLER(ePacketType::PLAYER_BRING, Packets::Players::PlayerBring* pBring)
+{
+    auto pFrom = CNetworkPlayerManager::GetPlayer(pBring->playerid);
+    CAdminMenu::TeleportLocalPlayer(pBring->pos, pBring->interior);
+    CChat::AddMessage("{ffff00}[SA Dream Mod]{ffffff} " + (pFrom ? pFrom->GetName() : std::string("Someone")) + " teleported you to them");
 }

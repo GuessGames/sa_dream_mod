@@ -33,6 +33,10 @@ public:
 
 	bool m_bIsHost = false;
 
+	// pause menu open / game window in the background (shown as AFK)
+	bool m_bPaused = false;
+	bool m_bAfk = false;
+
 	~CNetworkPlayer();
 	CNetworkPlayer(int id, CVector position);
 

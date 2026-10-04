@@ -46,10 +46,20 @@ PACKET_HANDLER(ePacketType::PLAYER_PLACE_WAYPOINT, Packets::Players::PlayerPlace
 
 PACKET_HANDLER(ePacketType::PLAYER_PAUSE_STATE, Packets::Players::PlayerPauseState* pPauseState, CNetworkPlayer* pNetworkPlayer)
 {
-    if (pNetworkPlayer->m_bPaused == pPauseState->paused)
+    if (pNetworkPlayer->m_bPaused == pPauseState->paused && pNetworkPlayer->m_bAfk == pPauseState->afk)
         return;
 
+    bool pauseChanged = pNetworkPlayer->m_bPaused != pPauseState->paused;
     pNetworkPlayer->m_bPaused = pPauseState->paused;
+    pNetworkPlayer->m_bAfk = pPauseState->afk;
+    pPauseState->playerid = pNetworkPlayer->m_iPlayerId;
+    GetPacketFactory().SendToAll(*pPauseState, pNetworkPlayer);
+
+    if (!pauseChanged)
+    {
+        logger::info("[net] %s %s", pNetworkPlayer->GetName().c_str(), pPauseState->afk ? "is AFK (window in the background)" : "is back");
+        return;
+    }
     logger::info("[net] %s %s the pause menu", pNetworkPlayer->GetName().c_str(), pPauseState->paused ? "opened" : "closed");
 
     // a paused game doesn't simulate the world: hand its peds and vehicles to someone who does
@@ -69,6 +79,16 @@ PACKET_HANDLER(ePacketType::PLAYER_PAUSE_STATE, Packets::Players::PlayerPauseSta
                 CNetworkVehicleManager::MigrateAllHosted(other, false);
             }
         }
+    }
+}
+
+PACKET_HANDLER(ePacketType::PLAYER_BRING, Packets::Players::PlayerBring* pBring, CNetworkPlayer* pNetworkPlayer)
+{
+    if (auto pTarget = CNetworkPlayerManager::GetPlayer(pBring->targetid))
+    {
+        logger::info("[net] %s brings %s", pNetworkPlayer->GetName().c_str(), pTarget->GetName().c_str());
+        pBring->playerid = pNetworkPlayer->m_iPlayerId;
+        GetPacketFactory().Send(*pBring, pTarget);
     }
 }
 

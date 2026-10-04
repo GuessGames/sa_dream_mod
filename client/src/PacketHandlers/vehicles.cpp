@@ -218,6 +218,28 @@ PACKET_HANDLER(ePacketType::VEHICLE_ENTER, Packets::Vehicles::VehicleEnter* pVeh
         pTask->m_fThrustStrafe = 0.0f;
     }
 
+    // somebody takes the car we are driving while we are in the pause menu or the window is in the background:
+    // nobody is at the keyboard and the jack animation would only play when we come back, so we are dropped
+    // next to the car right away and he simply drives off with it
+    CPlayerPed* pLocalPlayer = FindPlayerPed(0);
+    if (!pVehicleEnter->bPassenger && pLocalPlayer && pLocalPlayer->m_nPedFlags.bInVehicle && pLocalPlayer->m_pVehicle == pVehicle &&
+        pVehicle->m_pDriver == pLocalPlayer &&
+        (FrontEndMenuManager.m_bMenuActive || GetForegroundWindow() != RsGlobal.ps->window))
+    {
+        CVector side = pVehicle->GetPosition() - pVehicle->GetRight() * (pVehicle->GetColModel()->m_boundBox.m_vecMax.x + 1.0f);
+        Command<Commands::WARP_CHAR_FROM_CAR_TO_COORD>(CPools::GetPedRef(pLocalPlayer), side.x, side.y, side.z);
+
+        Packets::Vehicles::VehicleExit exitPacket{};
+        exitPacket.bForce = true;
+        GetPacketFactory().Send(exitPacket);
+
+        pNetworkPlayer->WarpIntoVehicleDriver(pVehicle);
+        strcpy_s(CLocalPlayer::m_szCarStolenBy, pNetworkPlayer->GetName().c_str());
+        CChat::AddMessage("[Player] " + pNetworkPlayer->GetName() + " took your vehicle while you were away");
+        logger::info("[veh] %s took our vehicle id=%d while we were away", pNetworkPlayer->GetName().c_str(), pVehicleEnter->vehicleid);
+        return;
+    }
+
     if (pVehicleEnter->bPassenger)
     {
         pNetworkPlayer->EnterVehiclePassenger(pVehicle, pVehicleEnter->seatid);

@@ -322,3 +322,13 @@ std::string CUtil::GetWeaponName(eWeaponType type)
 
     return names[type];
 }
+// Rebuilds a remote player's model from his own clothes description, fat and muscle included.
+// CClothes::RebuildPlayer(ped, false) takes fat/muscle from the LOCAL stats (everyone looked like us) and stores the
+// description as the local player's "previous clothes" (0xBC1C78), so that one is kept as it was.
+void CUtil::RebuildRemotePlayer(CPlayerPed* ped)
+{
+    uint8_t localPreviousClothes[0x78];
+    memcpy(localPreviousClothes, reinterpret_cast<void*>(0xBC1C78), sizeof(localPreviousClothes));
+    CClothes::RebuildPlayer(ped, true);
+    memcpy(reinterpret_cast<void*>(0xBC1C78), localPreviousClothes, sizeof(localPreviousClothes));
+}

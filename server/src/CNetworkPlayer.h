@@ -21,6 +21,7 @@ public:
     bool m_bIsHost = false;
     // in the pause menu: does not simulate the world, so it must not own entities
     bool m_bPaused = false;
+    bool m_bAfk = false;
     CVector m_vecPosition{};
     int8_t m_nSeatId = -1;
     int m_nVehicleId = -1;

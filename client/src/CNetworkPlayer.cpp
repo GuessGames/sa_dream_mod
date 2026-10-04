@@ -41,7 +41,7 @@ void CNetworkPlayer::CreatePed(int id, CVector position)
 
     *m_pPed->m_pPlayerData->m_pPedClothesDesc = m_pPedClothesDesc;
 
-    CClothes::RebuildPlayer(m_pPed, false);
+    CUtil::RebuildRemotePlayer(m_pPed);
 
     // THIS IS AN EXPERIMENTAL SOLUTION FOR THE 0x4D68BA CRASH
     m_pPed->m_bStreamingDontDelete = true;

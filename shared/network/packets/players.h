@@ -389,18 +389,45 @@ public:
     }
 };
 
-// the player opened the pause menu (or closed it): the server moves his entities to another player meanwhile
+// the player opened the pause menu (or closed it): the server moves his entities to another player meanwhile;
+// afk = the game window is in the background. Relayed to everyone so they can show "AFK" next to the name.
 class PlayerPauseState : public Packet
 {
     DEFINE_PACKET_TYPE(PlayerPauseState, ePacketType::PLAYER_PAUSE_STATE, ePacketChannel::EVENT);
 
 public:
+    SenderPlayerId playerid{};
     bool paused = false;
+    bool afk = false;
 
     template <typename Stream>
     bool Serialize(Stream& stream)
     {
+        serialize_object(stream, playerid);
         serialize_bool(stream, paused);
+        serialize_bool(stream, afk);
+        return true;
+    }
+};
+
+// admin menu "bring": the sender asks another player to teleport next to him
+class PlayerBring : public Packet
+{
+    DEFINE_PACKET_TYPE(PlayerBring, ePacketType::PLAYER_BRING, ePacketChannel::EVENT);
+
+public:
+    SenderPlayerId playerid{};
+    int targetid = 0;
+    CVector pos{};
+    int interior = 0;
+
+    template <typename Stream>
+    bool Serialize(Stream& stream)
+    {
+        serialize_object(stream, playerid);
+        serialize_int(stream, targetid, 0, Config::MAX_SERVER_PLAYERS - 1);
+        serialize_vector(stream, pos);
+        serialize_int(stream, interior, 0, 255);
         return true;
     }
 };

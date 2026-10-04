@@ -125,16 +125,35 @@ public:
                     GetPacketFactory().Send(packet);
                 }
 
-                // CGame::Process still runs while the pause menu is open, but the world is frozen
-                static bool bLastPaused = false;
+                // CGame::Process still runs while the pause menu is open, but the world is frozen;
+                // a window in the background for 5 s counts as AFK (the game keeps running there)
+                static bool bLastPaused = false, bLastAfk = false;
+                static uint32_t backgroundSince = 0;
                 bool bPaused = FrontEndMenuManager.m_bMenuActive;
-                if (bPaused != bLastPaused)
+                if (GetForegroundWindow() == RsGlobal.ps->window)
+                    backgroundSince = 0;
+                else if (!backgroundSince)
+                    backgroundSince = GetTickCount();
+                bool bAfk = backgroundSince && GetTickCount() - backgroundSince > 5000;
+                if (bPaused != bLastPaused || bAfk != bLastAfk)
                 {
+                    if (bPaused != bLastPaused)
+                        logger::info("[net] pause menu %s", bPaused ? "opened" : "closed");
+                    if (bAfk != bLastAfk)
+                        logger::info("[net] game window %s", bAfk ? "in the background (AFK)" : "active again");
                     bLastPaused = bPaused;
+                    bLastAfk = bAfk;
                     Packets::Players::PlayerPauseState pauseState{};
                     pauseState.paused = bPaused;
+                    pauseState.afk = bAfk;
                     GetPacketFactory().Send(pauseState);
-                    logger::info("[net] pause menu %s", bPaused ? "opened" : "closed");
+                }
+                if (!bPaused && !bAfk && CLocalPlayer::m_szCarStolenBy[0])
+                {
+                    static char help[128];
+                    sprintf_s(help, "~r~%s~w~ took your vehicle while you were away", CLocalPlayer::m_szCarStolenBy);
+                    CHud::SetHelpMessage(help, true, false, false);
+                    CLocalPlayer::m_szCarStolenBy[0] = 0;
                 }
 
                 unsigned int tickCount = GetTickCount();

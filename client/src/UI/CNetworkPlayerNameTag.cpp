@@ -172,12 +172,15 @@ void CNetworkPlayerNameTag::Process()
 		}
 		
 		float nicknameOffsetY = (player->m_onFootSnapshotInterpolated.healthSnapshot.iArmour > 0.0f ? 12.0f * scale + 12.0f * scale : 12.0f * scale);
+		std::string name = player->GetName();
+		if (player->m_bPaused || player->m_bAfk)
+			name += " ~w~[AFK]";
 		DrawNickName(
 			out.x + PROPORION_X(4.8f),
 			out.y - (PROPORION_Y(nicknameOffsetY) + PROPORION_Y(8.0f)),
 			scale,
 			alpha,
-			player->GetName().c_str()
+			name.c_str()
 		);
 		DrawWeaponIcon(
 			player->m_pPed,

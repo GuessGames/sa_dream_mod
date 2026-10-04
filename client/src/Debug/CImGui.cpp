@@ -40,6 +40,15 @@ void InitStyles()
     style.ChildRounding = 3.0f;
 }
 
+// while the admin/debug menu is open the mouse belongs to it: no camera turning, shooting or weapon switching
+// (the keyboard still moves the player). CPad::UpdateMouse fills the PC mouse state at 0xB73404.
+static void __fastcall CPad__UpdateMouse_Hook(CPad* This)
+{
+    plugin::CallMethod<0x53F3C0, CPad*>(This);
+    if (CImGui::ms_bActive && !FrontEndMenuManager.m_bMenuActive)
+        memset(reinterpret_cast<void*>(0xB73404), 0, 0x14);
+}
+
 void CImGui::SetActive(bool bActive)
 {
     ms_bActive = bActive;
@@ -67,6 +76,7 @@ void CImGui::UpdateActive()
 void CImGui::Init()
 {
     CAdminMenu::Init();
+    patch::RedirectCall(0x541DD7, CPad__UpdateMouse_Hook);
 
     Events::initRwEvent += []
     {
