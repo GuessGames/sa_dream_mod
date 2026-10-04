@@ -1,2 +1,9 @@
 *.cpp linguist-language=C++
 *.h linguist-language=C++
+# prebuilt files shipped to players via the manager
+dist/** binary
+*.dll binary
+*.exe binary
+*.asi binary
+*.scm binary
+*.img binary

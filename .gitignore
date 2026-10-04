@@ -12,3 +12,5 @@ vsxmake2022/
 vsxmake2026/
 output/
 compile_commands.json
+# manager local state
+tools/manager/*.log
