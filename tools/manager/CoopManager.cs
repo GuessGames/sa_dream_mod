@@ -40,7 +40,7 @@ namespace CoopManager
             {"gameDir", new[]{"Тека гри:", "Game folder:"}},
             {"srcDir", new[]{"Код моду (git, розробник):", "Mod source (git, developer):"}},
             {"addZip", new[]{"Архів з gta_sa.exe 1.0 US:", "Archive with gta_sa.exe 1.0 US:"}},
-            {"releaseRepo", new[]{"Публічний реліз (owner/repo):", "Public release (owner/repo):"}},
+            {"releaseRepo", new[]{"Репозиторій релізу (owner/repo):", "Release repository (owner/repo):"}},
             {"releaseDir", new[]{"Локальна копія релізу (розробник):", "Local release clone (developer):"}},
             {"browse", new[]{"Огляд…", "Browse…"}},
             {"save", new[]{"Зберегти", "Save"}},
@@ -63,7 +63,9 @@ namespace CoopManager
             {"writableNo", new[]{"Тека гри: немає прав на запис — натисніть «Надати права на теку гри»", "Game folder: not writable — press \"Grant access to game folder\""}},
             {"notWritable", new[]{"Немає прав на запис у теку гри (вона захищена як Program Files). Натисніть «Так», щоб надати вашому користувачу права на зміну цієї теки (з'явиться запит адміністратора Windows).", "The game folder is not writable (protected like Program Files). Press \"Yes\" to grant your user modify rights on this folder (a Windows administrator prompt will appear)."}},
             {"updates", new[]{"Оновлення", "Updates"}},
-            {"modePlayer", new[]{"Гравець: оновлення з публічного релізу", "Player: updates from the public release"}},
+            {"modePlayer", new[]{"Гравець: оновлення з репозиторію релізу", "Player: updates from the release repository"}},
+            {"releaseAccess", new[]{"Немає доступу до репозиторію релізу. Увійдіть у GitHub у вікні, яке відкриє git, і переконайтеся, що вас додано в колаборатори.", "No access to the release repository. Log in to GitHub in the window git opens and make sure you were added as a collaborator."}},
+            {"needGit", new[]{"Потрібен Git for Windows: https://git-scm.com/download/win", "Git for Windows is required: https://git-scm.com/download/win"}},
             {"modeDev", new[]{"Розробник: моя локальна збірка", "Developer: my local build"}},
             {"checkUpdates", new[]{"Перевірити оновлення", "Check for updates"}},
             {"update", new[]{"Оновити і встановити", "Update and install"}},
@@ -75,7 +77,7 @@ namespace CoopManager
             {"repoMissing", new[]{"Репозиторій з кодом не знайдено (потрібен тільки розробнику)", "Source repository not found (developers only)"}},
             {"unsafeOrigin", new[]{"Remote 'origin' не налаштований або вказує на оригінальний репозиторій Tornamic. Дозволено працювати тільки з нашими репозиторіями.", "Remote 'origin' is not set or points to the original Tornamic repository. Only our own repositories are allowed."}},
             {"dirtyTree", new[]{"У репозиторії з кодом є незакомічені зміни. Закомітьте їх перед публікацією, щоб реліз відповідав коду.", "The source repository has uncommitted changes. Commit them before publishing so the release matches the source."}},
-            {"confirmPublish", new[]{"Опублікувати нову версію у публічний репозиторій {0}?\n\nУ README релізу буде посилання на код цієї версії (вимога ліцензії GPL-3).", "Publish a new version to the public repository {0}?\n\nThe release README links to the source of this version (GPL-3 license requirement)."}},
+            {"confirmPublish", new[]{"Опублікувати нову версію в репозиторій релізу {0}?", "Publish a new version to the release repository {0}?"}},
             {"notPushed", new[]{"Спочатку запуште коміти в репозиторій з кодом: реліз має відповідати опублікованому коду.", "Push your commits to the source repository first: the release must match the published source."}},
             {"releaseDirMissing", new[]{"Локальна копія релізного репозиторію не знайдена: {0}", "Local release clone not found: {0}"}},
             {"selfUpdated", new[]{"Менеджер оновлено — перезапустіть його.", "The manager was updated — please restart it."}},
@@ -557,88 +559,54 @@ namespace CoopManager
         }
     }
 
-    // ------------------------------------------------------------------ public release repo (download without git)
+    // ------------------------------------------------------------------ private release repo (prebuilt files), read with git
+    // The repo is private: git's credential manager asks the player to log in to GitHub once,
+    // only collaborators of the repo get access.
     class Release
     {
         readonly Settings s;
         readonly Action<string> log;
         public Release(Settings settings, Action<string> logger) { s = settings; log = logger; }
 
-        static WebClient Client()
+        string Url { get { return "https://github.com/" + s.ReleaseRepo + ".git"; } }
+
+        int Git(string args, string workDir, out string output)
         {
-            ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
-            var wc = new WebClient();
-            wc.Headers[HttpRequestHeader.UserAgent] = "CoopAndreasManager";
-            return wc;
+            int code = new Git(s).Run(args, out output, workDir);
+            if (code != 0) log(output);
+            return code;
         }
 
-        // the commit sha of the release branch, so that manifest and files are read from the same snapshot
-        // falls back to the branch name when the anonymous GitHub API limit (60/hour per IP) is exhausted
-        string HeadSha()
+        // the version on the server without touching the installed package; null if not downloaded yet
+        public Manifest FetchRemote(string pkgDir)
         {
-            try
-            {
-                using (var wc = Client())
-                {
-                    string json = wc.DownloadString("https://api.github.com/repos/" + s.ReleaseRepo + "/commits/main");
-                    var m = Regex.Match(json, "\"sha\"\\s*:\\s*\"([0-9a-f]{40})\"");
-                    if (m.Success) return m.Groups[1].Value;
-                }
-            }
-            catch (WebException ex) { log("GitHub API unavailable (" + ex.Message + "), using the main branch"); }
-            return "main";
+            if (!Directory.Exists(Path.Combine(pkgDir, ".git"))) return null;
+            string o;
+            if (Git("fetch --depth 1 origin main", pkgDir, out o) != 0) throw new Exception(L.T("releaseAccess"));
+            if (Git("show origin/main:manifest.txt", pkgDir, out o) != 0) throw new Exception("manifest.txt");
+            return Manifest.Parse(o);
         }
 
-        string RawUrl(string sha, string path) { return "https://raw.githubusercontent.com/" + s.ReleaseRepo + "/" + sha + "/" + path; }
-
-        public Manifest FetchRemote(out string sha)
-        {
-            sha = HeadSha();
-            using (var wc = Client())
-            {
-                wc.Encoding = Encoding.UTF8;
-                return Manifest.Parse(wc.DownloadString(RawUrl(sha, "manifest.txt")));
-            }
-        }
-
-        // downloads changed files into the player package directory; returns true when the manager itself changed
+        // clones or updates the package directory; returns true when the manager itself changed
         public bool Download(string pkgDir)
         {
-            string sha;
-            var remote = FetchRemote(out sha);
-            log("release " + remote.Version + " (" + (sha.Length > 7 ? sha.Substring(0, 7) : sha) + ")");
-            Directory.CreateDirectory(pkgDir);
-            bool managerChanged = false;
-            using (var wc = Client())
+            string o;
+            if (!Directory.Exists(Path.Combine(pkgDir, ".git")))
             {
-                foreach (var kv in remote.Files)
-                {
-                    string dst = Path.Combine(pkgDir, kv.Key.Replace('/', '\\'));
-                    if (File.Exists(dst) && Installer.Sha256(dst) == kv.Value) continue;
-                    Directory.CreateDirectory(Path.GetDirectoryName(dst));
-                    string tmp = dst + ".download";
-                    wc.DownloadFile(RawUrl(sha, kv.Key), tmp);
-                    if (Installer.Sha256(tmp) != kv.Value) { File.Delete(tmp); throw new Exception("checksum mismatch: " + kv.Key); }
-                    if (File.Exists(dst)) File.Delete(dst);
-                    File.Move(tmp, dst);
-                    log("download: " + kv.Key);
-                    if (kv.Key == "CoopAndreasManager.exe") managerChanged = true;
-                }
+                if (Directory.Exists(pkgDir)) Directory.Delete(pkgDir, true);
+                Directory.CreateDirectory(Path.GetDirectoryName(pkgDir));
+                log("git clone " + Url);
+                if (Git("clone --depth 1 -b main \"" + Url + "\" \"" + pkgDir + "\"", Path.GetDirectoryName(pkgDir), out o) != 0)
+                    throw new Exception(L.T("releaseAccess"));
             }
-            // files that are no longer part of the release
-            var local = Manifest.Load(pkgDir);
-            if (local != null)
-                foreach (var old in local.Files.Keys.Where(k => !remote.Files.ContainsKey(k)))
-                {
-                    string p = Path.Combine(pkgDir, old.Replace('/', '\\'));
-                    if (File.Exists(p)) File.Delete(p);
-                }
-            using (var wc = Client())
+            else
             {
-                wc.Encoding = Encoding.UTF8;
-                File.WriteAllText(Path.Combine(pkgDir, "manifest.txt"), wc.DownloadString(RawUrl(sha, "manifest.txt")), new UTF8Encoding(false));
+                if (Git("fetch --depth 1 origin main", pkgDir, out o) != 0) throw new Exception(L.T("releaseAccess"));
+                if (Git("reset --hard origin/main", pkgDir, out o) != 0) throw new Exception(o);
             }
-            return managerChanged && SelfUpdate(Path.Combine(pkgDir, "CoopAndreasManager.exe"));
+            var m = Manifest.Load(pkgDir);
+            log("release " + (m != null ? m.Version : "?"));
+            return SelfUpdate(Path.Combine(pkgDir, "CoopAndreasManager.exe"));
         }
 
         // a running exe cannot be overwritten but can be renamed: swap it and ask for a restart
@@ -662,9 +630,19 @@ namespace CoopManager
 
         public bool RepoExists { get { return s.SourceDir.Length > 0 && Directory.Exists(Path.Combine(s.SourceDir, ".git")); } }
 
+        public static string Exe
+        {
+            get
+            {
+                foreach (var p in new[] { @"C:\Program Files\Git\cmd\git.exe", @"C:\Program Files (x86)\Git\cmd\git.exe" })
+                    if (File.Exists(p)) return p;
+                return "git";
+            }
+        }
+
         public int Run(string args, out string output, string workDir = null)
         {
-            var psi = new ProcessStartInfo("git", args)
+            var psi = new ProcessStartInfo(Exe, args)
             {
                 WorkingDirectory = workDir ?? s.SourceDir, UseShellExecute = false, CreateNoWindow = true,
                 RedirectStandardOutput = true, RedirectStandardError = true,
@@ -682,6 +660,7 @@ namespace CoopManager
                     return p.ExitCode;
                 }
             }
+            catch (System.ComponentModel.Win32Exception) { output = L.T("needGit"); return -1; }
             catch (Exception ex) { output = ex.Message; return -1; }
         }
 
@@ -847,11 +826,12 @@ namespace CoopManager
                 "# sa_dream_mod — release\n\n" +
                 "Prebuilt files of our CoopAndreas build. Install and update them with `CoopAndreasManager.exe`.\n\n" +
                 "Готові файли нашої збірки CoopAndreas. Встановлення й оновлення — через `CoopAndreasManager.exe`.\n\n" +
-                "1. Download / завантажте `CoopAndreasManager.exe` (open the file → Download raw file).\n" +
-                "2. Settings / Налаштування: game folder + archive or folder with `gta_sa.exe` 1.0 US.\n" +
-                "3. Install → Update and install / Встановлення → Оновити і встановити.\n\n" +
+                "1. Install Git for Windows / встановіть Git for Windows: https://git-scm.com/download/win\n" +
+                "2. Download / завантажте `CoopAndreasManager.exe` (open the file → Download raw file).\n" +
+                "3. Settings / Налаштування: game folder + archive or folder with `gta_sa.exe` 1.0 US.\n" +
+                "4. Install → Update and install / Встановлення → Оновити і встановити (git asks for your GitHub login once).\n\n" +
                 "- `gta_sa.exe` 1.0 US is NOT included / НЕ входить у реліз.\n" +
-                "- Source code of this exact version (GPL-3.0): " + sourceUrl + "/tree/" + head + "\n" +
+                "- Source code of this version (GPL-3.0), available on request / код цієї версії за запитом: " + sourceUrl + "/tree/" + head + "\n" +
                 "- Based on [CoopAndreas](https://github.com/Tornamic/CoopAndreas) (GPL-3.0).\n", new UTF8Encoding(false));
 
             string version = Manifest.Load(s.ReleaseDir).Version;
@@ -1067,8 +1047,8 @@ namespace CoopManager
         void CheckUpdates()
         {
             if (!settings.PlayerMode) return;
-            string sha;
-            var remote = new Release(settings, Log).FetchRemote(out sha);
+            var remote = new Release(settings, Log).FetchRemote(installer.PlayerPackageDir);
+            if (remote == null) { Log(L.T("pkgMissing")); return; }
             string installed = installer.InstalledVersion;
             string msg = installed == remote.Version ? L.F("upToDate", installed) : L.F("newVersion", remote.Version, installed.Length > 0 ? installed : "—");
             Log(msg);
