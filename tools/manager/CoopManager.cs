@@ -937,6 +937,9 @@ namespace CoopManager
                 new UTF8Encoding(false));
 
             string version = Manifest.Load(s.ReleaseDir).Version;
+            // files must be stored byte for byte, the manifest hashes them (no CRLF/LF conversion)
+            File.WriteAllText(Path.Combine(s.ReleaseDir, ".gitattributes"), "* -text\n", new UTF8Encoding(false));
+            if (runTool("git", "add -A --renormalize", s.ReleaseDir) != 0) return;
             if (runTool("git", "add -A", s.ReleaseDir) != 0) return;
             if (runTool("git", "commit -m \"release " + version + "\"", s.ReleaseDir) != 0) return;
             runTool("git", "push origin HEAD:main", s.ReleaseDir);
