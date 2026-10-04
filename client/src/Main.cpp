@@ -1,4 +1,4 @@
-﻿#include "CLocalPlayer.h"
+#include "CLocalPlayer.h"
 #include "CNetworkPlayerManager.h"
 #include "CPacketBuffer.h"
 #include "CServerTime.h"
@@ -32,6 +32,7 @@
 #include <CWeatherSync.h>
 #include <network/packets/scripts.h>
 #include <CNetworkEntityBlip.h>
+#include <CPickupSync.h>
 
 unsigned int lastOnFootSyncTickRate = 0;
 unsigned int lastDriverSyncTickRate = 0;
@@ -121,6 +122,18 @@ public:
                     Packets::Scripts::OnMissionFlagSync packet{};
                     packet.bOnMission = CTheScripts::ScriptSpace[CTheScripts::OnAMissionFlag];
                     GetPacketFactory().Send(packet);
+                }
+
+                // CGame::Process still runs while the pause menu is open, but the world is frozen
+                static bool bLastPaused = false;
+                bool bPaused = FrontEndMenuManager.m_bMenuActive;
+                if (bPaused != bLastPaused)
+                {
+                    bLastPaused = bPaused;
+                    Packets::Players::PlayerPauseState pauseState{};
+                    pauseState.paused = bPaused;
+                    GetPacketFactory().Send(pauseState);
+                    logger::info("[net] pause menu %s", bPaused ? "opened" : "closed");
                 }
 
                 unsigned int tickCount = GetTickCount();

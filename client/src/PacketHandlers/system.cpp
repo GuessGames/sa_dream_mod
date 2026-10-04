@@ -65,7 +65,8 @@ PACKET_HANDLER(ePacketType::PLAYER_HANDSHAKE, Packets::System::PlayerHandshake* 
 {
     CNetworkPlayerManager::m_nMyId = pPlayerHandshake->yourid;
     CNetwork::m_bAuthenticated = true;
-    CPatch::RevertTemporaryPatches();
+    // the ambient population (peds, traffic, parked cars) is generated only by the host,
+    // everyone else receives the host's entities; see PLAYER_ASSIGN_HOST
     logger::info("Authenticated, playerid %d", pPlayerHandshake->yourid);
 }
 
@@ -93,7 +94,8 @@ PACKET_HANDLER(ePacketType::PLAYER_ASSIGN_HOST, Packets::System::PlayerAssignHos
     {
         CLocalPlayer::m_bIsHost = true;
 
-        CPatch::RevertTemporaryPatchesForHost(); // TODO is this needed?
+        CPatch::RevertTemporaryPatches();  // the host generates the population for everyone
+        logger::info("[net] we are the host now: population generation enabled");
 
         CNetworkPedManager::AssignHost();
         CWeatherSync::SyncCurrentState();
@@ -115,6 +117,11 @@ PACKET_HANDLER(ePacketType::PLAYER_ASSIGN_HOST, Packets::System::PlayerAssignHos
         }
     }
 
+    if (CLocalPlayer::m_bIsHost)
+    {
+        CPatch::TemporaryPatches();
+        logger::info("[net] we are not the host anymore: population generation disabled");
+    }
     CLocalPlayer::m_bIsHost = false;
 }
 

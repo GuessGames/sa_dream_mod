@@ -23,6 +23,18 @@ public:
 	float m_fHealth = 100.0f;
 	int m_nBlipHandle = -1;
 	bool m_bClaimOnRelease = false;
+	// pool handle at creation: detects a pool slot reused by another ped (pointer alone is not enough)
+	int m_nPoolRef = -1;
+	// the game removed our hosted ped before the server confirmed its id
+	bool m_bRemovedBeforeConfirm = false;
+	// a random ped temporarily marked as mission so the population code doesn't delete it next to another player
+	bool m_bKeptAlive = false;
+	// real AI settings, puppets (peds synced by someone else) get them disabled
+	int m_nOrigDmType = -1;
+	float m_fOrigHearingRange = 30.0f;
+	float m_fOrigSeeingRange = 30.0f;
+	unsigned int m_nOrigDmNumPedsToScan = 0;
+	float m_fOrigDmRadius = 0.0f;
 
 	static CNetworkPed* CreateHosted(CPed* ped);
 	void WarpIntoVehicleDriver(CVehicle* vehicle);
@@ -32,6 +44,10 @@ public:
 	void CancelClaim();
 
 	void ApplyWeaponSnapshot(Packets::Players::SWeaponSnapshot& weaponSnapshot);
+	bool IsPedValid();
+	// explicit ownership change from the server; taking over a puppet gives it its AI back
+	void SetSyncing(bool syncing);
+	void SetKeptAlive(bool keep);
 
 	CNetworkPed(int pedid, int modelId, ePedType pedType, CVector pos, unsigned char createdBy, char specialModelName[]);
 	~CNetworkPed();

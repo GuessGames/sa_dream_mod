@@ -105,6 +105,10 @@ void CNetworkVehicleManager::UpdateIdle()
 		if (pVehicle == nullptr)
 			continue;
 
+		// our population code removes cars out of OUR view; keep the ones another player is looking at
+		if (pNetworkVehicle->m_bSyncing)
+			pNetworkVehicle->SetKeptAlive(CNetworkPedManager::IsNearRemotePlayer(pVehicle->GetPosition(), CNetworkPedManager::KEEP_ALIVE_RADIUS));
+
 		if (pNetworkVehicle->m_bSyncing && !pNetworkVehicle->HasDriver())
 		{
 			Packets::Vehicles::VehicleIdleUpdate packet{};
@@ -183,8 +187,7 @@ void CNetworkVehicleManager::RemoveHostedUnused()
 	{
 		if ((*it)->m_bSyncing)
 		{
-			CVehicle* vehicle = (*it)->m_pVehicle;
-			if (!IsVehiclePointerValid(vehicle))
+			if (!(*it)->IsVehicleValid())
 			{
 				delete* it;
 				it = m_pVehicles.erase(it);

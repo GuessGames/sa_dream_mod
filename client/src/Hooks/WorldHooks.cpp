@@ -120,7 +120,9 @@ static void __cdecl CWorld__Remove_Hook(CEntity* entity)
                 auto pTemp = CNetworkVehicleManager::m_apTempVehicles[i];
                 if (pTemp && pTemp->m_pVehicle == vehicle)
                 {
-                    logger::warn("[veh] hosted vehicle temp=%d removed before server confirmed it", i);
+                    logger::info("[veh] hosted vehicle temp=%d removed before server confirmed it", i);
+                    pTemp->m_bRemovedBeforeConfirm = true;
+                    pTemp->m_pVehicle = nullptr;
                 }
             }
         }
@@ -143,7 +145,9 @@ static void __cdecl CWorld__Remove_Hook(CEntity* entity)
                     auto pTemp = CNetworkPedManager::m_apTempPeds[i];
                     if (pTemp && pTemp->m_pPed == ped)
                     {
-                        logger::warn("[ped] hosted ped temp=%d removed before server confirmed it", i);
+                        logger::info("[ped] hosted ped temp=%d removed before server confirmed it", i);
+                        pTemp->m_bRemovedBeforeConfirm = true;
+                        pTemp->m_pPed = nullptr;
                     }
                 }
             }

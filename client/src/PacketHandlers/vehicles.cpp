@@ -50,18 +50,20 @@ PACKET_HANDLER(ePacketType::VEHICLE_CONFIRM, Packets::Vehicles::VehicleConfirm* 
         CNetworkVehicle* pTempVehicle = CNetworkVehicleManager::m_apTempVehicles[pVehicleConfirm->tempid];
         if (pTempVehicle)
         {
-            if (!IsVehiclePointerValid(pTempVehicle->m_pVehicle))
-            {
-                logger::warn("[veh] CONFIRM temp=%d id=%d but the local vehicle is already gone (removed before confirm)",
-                    pVehicleConfirm->tempid, pVehicleConfirm->vehicleid);
-            }
-            else
-            {
-                logger::info("[veh] CONFIRM temp=%d -> id=%d", pVehicleConfirm->tempid, pVehicleConfirm->vehicleid);
-            }
-            pTempVehicle->m_nVehicleId = pVehicleConfirm->vehicleid;
-            CNetworkVehicleManager::Add(pTempVehicle);
             CNetworkVehicleManager::m_apTempVehicles[pVehicleConfirm->tempid] = nullptr;
+            pTempVehicle->m_nVehicleId = pVehicleConfirm->vehicleid;
+
+            if (pTempVehicle->m_bRemovedBeforeConfirm || !pTempVehicle->IsVehicleValid())
+            {
+                logger::warn("[veh] CONFIRM temp=%d id=%d: vehicle removed before confirm, removing it everywhere",
+                    pVehicleConfirm->tempid, pVehicleConfirm->vehicleid);
+                pTempVehicle->m_pVehicle = nullptr;
+                delete pTempVehicle;  // m_bSyncing -> sends VEHICLE_REMOVE
+                return;
+            }
+
+            logger::info("[veh] CONFIRM temp=%d -> id=%d", pVehicleConfirm->tempid, pVehicleConfirm->vehicleid);
+            CNetworkVehicleManager::Add(pTempVehicle);
         }
     }
 }
@@ -397,32 +399,8 @@ PACKET_HANDLER(ePacketType::ASSIGN_VEHICLE, Packets::Vehicles::AssignVehicleSync
     }
 
     logger::info("[veh] ASSIGN id=%d syncing %d -> %d", pAssignVehicleSyncer->vehicleid, pNetworkVehicle->m_bSyncing,
-        !pNetworkVehicle->m_bSyncing);
-
-    if (pNetworkVehicle->m_bSyncing)
-    {
-#ifdef PACKET_DEBUG_MESSAGES
-        CChat::AddMessage("NOT SYNCING VEHICLE %d ANYMORE", pAssignVehicleSyncer->vehicleid);
-#endif
-        pNetworkVehicle->m_bSyncing = false;
-
-        if (auto pVehicle = pNetworkVehicle->m_pVehicle)
-        {
-            pVehicle->SetVehicleCreatedBy(eVehicleCreatedBy::MISSION_VEHICLE);
-        }
-    }
-    else
-    {
-#ifdef PACKET_DEBUG_MESSAGES
-        CChat::AddMessage("SYNCING VEHICLE %d", pAssignVehicleSyncer->vehicleid);
-#endif
-        pNetworkVehicle->m_bSyncing = true;
-
-        if (auto pVehicle = pNetworkVehicle->m_pVehicle)
-        {
-            pVehicle->SetVehicleCreatedBy(pNetworkVehicle->m_nCreatedBy);
-        }
-    }
+        pAssignVehicleSyncer->syncing);
+    pNetworkVehicle->SetSyncing(pAssignVehicleSyncer->syncing);
 }
 
 

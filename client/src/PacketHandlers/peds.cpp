@@ -11,9 +11,12 @@ PACKET_HANDLER(ePacketType::PED_SPAWN, Packets::Peds::PedSpawn* pPedSpawn)
         packet->pos.y, packet->pos.z, packet->pedType, packet->createdBy);
 #endif
 
-    if (CNetworkPedManager::GetPed(pPedSpawn->pedid))
+    if (CNetworkPed* pOld = CNetworkPedManager::GetPed(pPedSpawn->pedid))
     {
-        logger::warn("[ped] SPAWN id=%d already exists locally (stale id reuse / reordered packets)", pPedSpawn->pedid);
+        logger::warn("[ped] SPAWN id=%d already exists locally, replacing it", pPedSpawn->pedid);
+        CNetworkPedManager::Remove(pOld);
+        pOld->m_bSyncing = false;  // just drop the local copy, don't tell the server to remove the new ped
+        delete pOld;
     }
     logger::info("[ped] SPAWN id=%d model=%d type=%d pos=(%.1f %.1f %.1f) createdBy=%d", pPedSpawn->pedid,
         pPedSpawn->modelId, pPedSpawn->pedType, pPedSpawn->pos.x, pPedSpawn->pos.y, pPedSpawn->pos.z, pPedSpawn->createdBy);
@@ -35,18 +38,21 @@ PACKET_HANDLER(ePacketType::PED_CONFIRM, Packets::Peds::PedConfirm* pPedConfirm)
         CNetworkPed* pTempPed = CNetworkPedManager::m_apTempPeds[pPedConfirm->tempid];
         if (pTempPed)
         {
-            if (!IsPedPointerValid(pTempPed->m_pPed))
-            {
-                logger::warn("[ped] CONFIRM temp=%d id=%d but the local ped is already gone (removed before confirm)",
-                    pPedConfirm->tempid, pPedConfirm->pedid);
-            }
-            else
-            {
-                logger::info("[ped] CONFIRM temp=%d -> id=%d", pPedConfirm->tempid, pPedConfirm->pedid);
-            }
-            pTempPed->m_nPedId = pPedConfirm->pedid;
-            CNetworkPedManager::Add(pTempPed);
             CNetworkPedManager::m_apTempPeds[pPedConfirm->tempid] = nullptr;
+            pTempPed->m_nPedId = pPedConfirm->pedid;
+
+            if (pTempPed->m_bRemovedBeforeConfirm || !pTempPed->IsPedValid())
+            {
+                // the ped is gone already: remove it for everyone now that it has an id
+                logger::warn("[ped] CONFIRM temp=%d id=%d: ped removed before confirm, removing it everywhere",
+                    pPedConfirm->tempid, pPedConfirm->pedid);
+                pTempPed->m_pPed = nullptr;
+                delete pTempPed;  // m_bSyncing -> sends PED_REMOVE
+                return;
+            }
+
+            logger::info("[ped] CONFIRM temp=%d -> id=%d", pPedConfirm->tempid, pPedConfirm->pedid);
+            CNetworkPedManager::Add(pTempPed);
         }
     }
 }
@@ -78,33 +84,8 @@ PACKET_HANDLER(ePacketType::ASSIGN_PED, Packets::Peds::AssignPedSyncer* pAssignP
     }
 
     logger::info("[ped] ASSIGN id=%d syncing %d -> %d", pAssignPedSyncer->pedid, pNetworkPed->m_bSyncing,
-        !pNetworkPed->m_bSyncing);
-
-    if (pNetworkPed->m_bSyncing)
-    {
-#ifdef PACKET_DEBUG_MESSAGES
-        CChat::AddMessage("NOT SYNCING PED %d ANYMORE", pAssignPedSyncer->pedid);
-#endif
-        pNetworkPed->m_bSyncing = false;
-
-        if (auto pPed = pNetworkPed->m_pPed)
-        {
-            pPed->SetCharCreatedBy(MISSION_CHAR);
-        }
-    }
-    else
-    {
-#ifdef PACKET_DEBUG_MESSAGES
-        CChat::AddMessage("SYNCING VEHICLE %d", pAssignPedSyncer->pedid);
-#endif
-        pNetworkPed->m_bSyncing = true;
-        pNetworkPed->m_bClaimOnRelease = false;
-
-        if (auto pPed = pNetworkPed->m_pPed)
-        {
-            pPed->SetCharCreatedBy(pNetworkPed->m_nCreatedBy);
-        }
-    }
+        pAssignPedSyncer->syncing);
+    pNetworkPed->SetSyncing(pAssignPedSyncer->syncing);
 }
 
 PACKET_HANDLER(ePacketType::PED_ONFOOT, Packets::Peds::PedOnFoot* pPedOnFoot)

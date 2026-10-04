@@ -4,6 +4,7 @@
 #include <CWeatherSync.h>
 #include <CMoonSync.h>
 #include <game_sa/CTagManager.h>
+#include <CPickupSync.h>
 
 PACKET_HANDLER(ePacketType::GAME_WEATHER_TIME, Packets::World::GameWeatherTime* pGameWeatherTime)
 {
@@ -66,4 +67,14 @@ PACKET_HANDLER(ePacketType::UPDATE_ALL_TAGS, Packets::World::UpdateAllTags* pUpd
 PACKET_HANDLER(ePacketType::UPDATE_MOON_SIZE, Packets::World::UpdateMoonSize* pUpdateMoonSize)
 {
 	CMoonSync::HandlePacket(pUpdateMoonSize);
+}
+PACKET_HANDLER(ePacketType::PICKUP_CREATE, Packets::World::PickupCreate* pPickupCreate)
+{
+	CPickupSync::OnPickupCreate(pPickupCreate->netId, pPickupCreate->modelId, pPickupCreate->pickupType,
+		pPickupCreate->ammo, pPickupCreate->moneyPerDay, pPickupCreate->pos);
+}
+
+PACKET_HANDLER(ePacketType::PICKUP_REMOVE, Packets::World::PickupRemove* pPickupRemove)
+{
+	CPickupSync::OnPickupRemove(pPickupRemove->netId);
 }

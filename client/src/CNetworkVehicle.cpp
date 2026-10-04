@@ -84,6 +84,7 @@ bool CNetworkVehicle::CreateVehicle(int vehicleid, int modelid, CVector pos, flo
     m_pVehicle->m_nPrimaryColor = color1;
     m_pVehicle->m_nSecondaryColor = color2;
     CWorld::Add(m_pVehicle);
+    m_nPoolRef = CPools::GetVehicleRef(m_pVehicle);
 
     return true;
 }
@@ -120,12 +121,42 @@ bool CNetworkVehicle::HasDriver()
     return m_pVehicle->m_pDriver != nullptr;
 }
 
+bool CNetworkVehicle::IsVehicleValid()
+{
+    return m_pVehicle && IsVehiclePointerValid(m_pVehicle) && CPools::GetVehicleRef(m_pVehicle) == m_nPoolRef;
+}
+
+void CNetworkVehicle::SetKeptAlive(bool keep)
+{
+    if (m_bKeptAlive == keep || !m_pVehicle || (m_nCreatedBy != RANDOM_VEHICLE && m_nCreatedBy != PARKED_VEHICLE))
+        return;
+
+    m_bKeptAlive = keep;
+    m_pVehicle->SetVehicleCreatedBy(keep ? MISSION_VEHICLE : (eVehicleCreatedBy)m_nCreatedBy);
+}
+
+void CNetworkVehicle::SetSyncing(bool syncing)
+{
+    if (m_bSyncing == syncing)
+        return;
+
+    m_bSyncing = syncing;
+    m_bKeptAlive = false;
+
+    if (IsVehicleValid())
+    {
+        m_pVehicle->SetVehicleCreatedBy(syncing ? (eVehicleCreatedBy)m_nCreatedBy : MISSION_VEHICLE);
+    }
+    logger::info("[veh] %s id=%d", syncing ? "took over" : "released", m_nVehicleId);
+}
+
 CNetworkVehicle* CNetworkVehicle::CreateHosted(CVehicle* vehicle)
 {
     vehicle->m_nTimeTillWeNeedThisCar += 5000;
 
     CNetworkVehicle* networkVehicle = new CNetworkVehicle();
     networkVehicle->m_pVehicle = vehicle;
+    networkVehicle->m_nPoolRef = CPools::GetVehicleRef(vehicle);
     networkVehicle->m_nVehicleId = -1;
     networkVehicle->m_bSyncing = true;
     networkVehicle->m_nModelId = vehicle->m_nModelIndex;

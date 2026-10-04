@@ -263,6 +263,21 @@ void __fastcall CMenuManager__DrawStandardMenu_Hook(CMenuManager* This, SKIP_EDX
 {
 	CCompatibilityChecker::Process();
 
+	// -autoconnect (used by the manager's test mode): start the game = connect with the saved nickname/ip
+	static uint32_t autoConnectSeenAt = 0;
+	if (CCore::ms_bAutoConnect && This->m_bGameNotLoaded)
+	{
+		if (!autoConnectSeenAt)
+			autoConnectSeenAt = GetTickCount();
+		else if (GetTickCount() - autoConnectSeenAt > 2000 && CNetwork::m_nPort != 0 && strlen(CLocalPlayer::m_Name) &&
+				 CNetwork::IsValidIP(CNetwork::m_IpAddress))
+		{
+			CCore::ms_bAutoConnect = false;
+			logger::info("autoconnect to %s:%d as %s", CNetwork::m_IpAddress, CNetwork::m_nPort, CLocalPlayer::m_Name);
+			This->SwitchToNewScreen(1);
+		}
+	}
+
 	This->DrawStandardMenu(a1);
 	
 //#if DEBUG

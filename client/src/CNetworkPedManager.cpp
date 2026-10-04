@@ -47,6 +47,17 @@ void CNetworkPedManager::Remove(CNetworkPed* ped)
     }
 }
 
+// is any other player close enough to see this position?
+bool CNetworkPedManager::IsNearRemotePlayer(const CVector& pos, float radius)
+{
+    for (auto* pNetworkPlayer : CNetworkPlayerManager::m_pPlayers)
+    {
+        if (pNetworkPlayer->m_pPed && (pNetworkPlayer->m_pPed->GetPosition() - pos).Magnitude() < radius)
+            return true;
+    }
+    return false;
+}
+
 void CNetworkPedManager::Update()
 {
     CNetworkPedManager::RemoveHostedUnused();
@@ -59,6 +70,9 @@ void CNetworkPedManager::Update()
         CPed* pPed = pNetworkPed->m_pPed;
         if (!pPed)
             continue;
+
+        // our population code removes peds out of OUR view; keep the ones another player is looking at
+        pNetworkPed->SetKeptAlive(IsNearRemotePlayer(pPed->GetPosition(), KEEP_ALIVE_RADIUS));
 
         CVehicle* pVehicle = pPed->m_pVehicle;
         CNetworkVehicle* pNetworkVehicle = pVehicle ? CNetworkVehicleManager::GetVehicle(pVehicle) : nullptr;
@@ -246,8 +260,7 @@ void CNetworkPedManager::RemoveHostedUnused()
     {
         if ((*it)->m_bSyncing)
         {
-            CPed* ped = (*it)->m_pPed;
-            if (!IsPedPointerValid(ped))
+            if (!(*it)->IsPedValid())
             {
                 delete *it;
                 it = m_pPeds.erase(it);

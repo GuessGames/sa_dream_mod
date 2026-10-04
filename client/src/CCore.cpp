@@ -67,6 +67,8 @@ void CCore::Init()
         ms_nProfile = std::clamp(atoi(profileArg + 9), 0, 9);
     }
 
+    ms_bAutoConnect = strstr(cmd, "-autoconnect") != nullptr;
+
     gvm.Detect();
     // log to CoopAndreas\logs\client[_N].log (read by the manager); -console shows a console window instead
     if (strstr(cmd, "-console") != nullptr)

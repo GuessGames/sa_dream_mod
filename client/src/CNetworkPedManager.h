@@ -14,5 +14,7 @@ public:
 	static void AssignHost();
 	static unsigned char AddToTempList(CNetworkPed* networkPed);
 	static void RemoveHostedUnused();
+	static bool IsNearRemotePlayer(const CVector& pos, float radius);
+	static constexpr float KEEP_ALIVE_RADIUS = 100.0f;
 };
 

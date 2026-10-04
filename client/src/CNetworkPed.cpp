@@ -58,6 +58,11 @@ CNetworkPed::CNetworkPed(int pedid, int modelId, ePedType pedType, CVector pos, 
     }
 
     m_pPed->m_nCreatedBy = 2;
+    m_nOrigDmType = m_pPed->m_pIntelligence->m_nDecisionMakerType;
+    m_fOrigHearingRange = m_pPed->m_pIntelligence->m_fHearingRange;
+    m_fOrigSeeingRange = m_pPed->m_pIntelligence->m_fSeeingRange;
+    m_nOrigDmNumPedsToScan = m_pPed->m_pIntelligence->m_nDmNumPedsToScan;
+    m_fOrigDmRadius = m_pPed->m_pIntelligence->m_fDmRadius;
     m_pPed->m_pIntelligence->SetPedDecisionMakerType(-1);
     m_pPed->m_pIntelligence->SetSeeingRange(30.0);
     m_pPed->m_pIntelligence->SetHearingRange(30.0);
@@ -67,6 +72,7 @@ CNetworkPed::CNetworkPed(int pedid, int modelId, ePedType pedType, CVector pos, 
     m_pPed->SetPosn(pos);
     m_pPed->SetOrientation(0.f, 0.f, 0.f);
     CWorld::Add(m_pPed);
+    m_nPoolRef = CPools::GetPedRef(m_pPed);
 
     m_nPedId = pedid;
     m_nPedType = pedType;
@@ -117,6 +123,7 @@ CNetworkPed* CNetworkPed::CreateHosted(CPed* ped)
     CNetworkPed* networkPed = new CNetworkPed();
 
     networkPed->m_pPed = ped;
+    networkPed->m_nPoolRef = CPools::GetPedRef(ped);
     networkPed->m_nPedId = 0;
     networkPed->m_nCreatedBy = ped->m_nCreatedBy;
     networkPed->m_bSyncing = true;
@@ -241,6 +248,77 @@ void CNetworkPed::CancelClaim()
     GetPacketFactory().Send(packet);
 
     m_bClaimOnRelease = false;
+}
+
+bool CNetworkPed::IsPedValid()
+{
+    return m_pPed && IsPedPointerValid(m_pPed) && CPools::GetPedRef(m_pPed) == m_nPoolRef;
+}
+
+void CNetworkPed::SetKeptAlive(bool keep)
+{
+    if (m_bKeptAlive == keep || !m_pPed || m_nCreatedBy != RANDOM_CHAR)
+        return;
+
+    m_bKeptAlive = keep;
+    m_pPed->SetCharCreatedBy(keep ? MISSION_CHAR : RANDOM_CHAR);
+}
+
+void CNetworkPed::SetSyncing(bool syncing)
+{
+    if (m_bSyncing == syncing)
+        return;
+
+    m_bSyncing = syncing;
+    m_bKeptAlive = false;
+
+    if (!IsPedValid())
+        return;
+
+    CPedIntelligence* intelligence = m_pPed->m_pIntelligence;
+    int pedRef = CPools::GetPedRef(m_pPed);
+
+    if (syncing)
+    {
+        m_bClaimOnRelease = false;
+        m_pPed->SetCharCreatedBy(m_nCreatedBy);
+        m_pPed->m_nPedFlags.CantBeKnockedOffBike = 2;  // 2 - normal
+
+        intelligence->SetPedDecisionMakerType(m_nOrigDmType);
+        intelligence->SetHearingRange(m_fOrigHearingRange);
+        intelligence->SetSeeingRange(m_fOrigSeeingRange);
+        intelligence->m_nDmNumPedsToScan = m_nOrigDmNumPedsToScan;
+        intelligence->m_fDmRadius = m_fOrigDmRadius;
+
+        // mission peds are driven by the host's scripts; random ones just need something to do
+        if (m_nCreatedBy == RANDOM_CHAR)
+        {
+            CVehicle* vehicle = m_pPed->m_pVehicle;
+            if (m_pPed->m_nPedFlags.bInVehicle && vehicle && vehicle->m_pDriver == m_pPed)
+            {
+                plugin::Command<Commands::TASK_CAR_DRIVE_WANDER>(pedRef, CPools::GetVehicleRef(vehicle), 12.0f, 0);
+            }
+            else if (!m_pPed->m_nPedFlags.bInVehicle)
+            {
+                plugin::Command<Commands::TASK_WANDER_STANDARD>(pedRef);
+            }
+        }
+        logger::info("[ped] took over id=%d (AI restored)", m_nPedId);
+    }
+    else
+    {
+        // becomes a puppet driven by network updates
+        m_pPed->SetCharCreatedBy(MISSION_CHAR);
+        m_nOrigDmType = intelligence->m_nDecisionMakerType;
+        m_fOrigHearingRange = intelligence->m_fHearingRange;
+        m_fOrigSeeingRange = intelligence->m_fSeeingRange;
+        m_nOrigDmNumPedsToScan = intelligence->m_nDmNumPedsToScan;
+        m_fOrigDmRadius = intelligence->m_fDmRadius;
+        intelligence->SetPedDecisionMakerType(-1);
+        intelligence->m_fDmRadius = 0.0f;
+        intelligence->m_nDmNumPedsToScan = 0;
+        logger::info("[ped] released id=%d", m_nPedId);
+    }
 }
 
 void CNetworkPed::ApplyWeaponSnapshot(Packets::Players::SWeaponSnapshot& weaponSnapshot)

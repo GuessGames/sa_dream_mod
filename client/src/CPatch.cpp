@@ -14,16 +14,22 @@ void CPatch::TemporaryPatches()
     patch::SetUChar(0x8A5B28, false);  // CCarCtrl::bAllowEmergencyServicesToBeCreated
     CPlane::SwitchAmbientPlanes(false);
 
+    // the call targets are read only once: on a second call the call sites are already NOPed
+    // (this runs again when the local player stops being the host)
+
     // disable CCarCtrl::GenerateRandomCars
-    CCarCtrl__GenerateRandomCars_ptr = injector::GetBranchDestination(0x53C1C1).as_int();
+    if (!CCarCtrl__GenerateRandomCars_ptr)
+        CCarCtrl__GenerateRandomCars_ptr = injector::GetBranchDestination(0x53C1C1).as_int();
     patch::Nop(0x53C1C1, 5);
 
     // disable CPlane::DoPlaneGenerationAndRemoval
-    CPlane__DoPlaneGenerationAndRemoval_ptr = injector::GetBranchDestination(0x434272).as_int();
+    if (!CPlane__DoPlaneGenerationAndRemoval_ptr)
+        CPlane__DoPlaneGenerationAndRemoval_ptr = injector::GetBranchDestination(0x434272).as_int();
     patch::Nop(0x434272, 5);
 
-    // disable CPlane::DoPlaneGenerationAndRemoval
-    CTheCarGenerators__Process_ptr = injector::GetBranchDestination(0x53C06A).as_int();
+    // disable CTheCarGenerators::Process
+    if (!CTheCarGenerators__Process_ptr)
+        CTheCarGenerators__Process_ptr = injector::GetBranchDestination(0x53C06A).as_int();
     patch::Nop(0x53C06A, 5);
 
     CPopulation::PedDensityMultiplier = 0.0f;
@@ -123,8 +129,11 @@ void PatchStreaming()
     // patch game freezeing if inactive
     //patch::Nop(0x561AF0, 7);  // dont pause the game loop if paused
     patch::Nop(0x745BC9, 2);  // unlock resolutions
-    // patch::SetUChar(0x747FB6, 1);
-    patch::SetUChar(0x74805A, 1);  // ForegroundApp always 1
+    // ForegroundApp always 1: the main loop (0x748A87) skips the whole frame, network included, when it is 0
+    patch::SetUChar(0x747FB6, 1);  // WM_ACTIVATE (inactive)
+    patch::SetUChar(0x74805A, 1);  // WM_KILLFOCUS
+    // WM_SETFOCUS: don't open the pause menu when the window gets the focus back
+    patch::Nop(0x748063, 5);
     patch::Nop(0x53EA88, 6);
 
     // do not hide the cursor on the control box of the game window
