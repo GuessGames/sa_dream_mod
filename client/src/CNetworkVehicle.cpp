@@ -36,6 +36,13 @@ bool CNetworkVehicle::CreateVehicle(int vehicleid, int modelid, CVector pos, flo
         CStreaming::SetModelTxdIsDeletable(modelid);
     }
 
+    // creating a vehicle without its model crashes in CVehicleModelInfo::CreateInstance
+    if (CStreaming::ms_aInfoForModel[modelid].m_nLoadState != LOADSTATE_LOADED)
+    {
+        logger::error("[veh] model %d of vehicle id=%d could not be loaded, not creating it", modelid, vehicleid);
+        return false;
+    }
+
     switch (((CVehicleModelInfo*)CModelInfo::ms_modelInfoPtrs[modelid])->m_nVehicleType)
     {
     case VEHICLE_MTRUCK:

@@ -81,11 +81,6 @@ void StatsHooks::InjectHooks()
 	patch::RedirectJump(0x5E3B60, CPed__GetWeaponSkill_Hook);
 	patch::RedirectCall(0x5A8357, CPed__Dress_Hook);
 
-	// CClothes::RebuildPlayer passes the local player's previous clothes (0xBC1C78) to ConstructPedModel, which then
-	// reuses parts of the shared player model clump that look unchanged. With several players that clump was usually
-	// built for someone else, so a rebuild kept another player's body (only the walk style changed).
-	// Passing no previous clothes (like the game does for cutscenes) always builds the whole model.
-	patch::SetRaw(0x5A8346, (void*)"\x6A\x00\x90\x90\x90", 5);
 
 	const std::vector<int> CStats__SetStatValue_Refs = {
 		0x00439117, 0x00439157, 0x00439194, 0x0043919D, 0x00439937, 0x00439947, 0x00439953, 0x0043995F, 0x0043996B, 0x00439977,

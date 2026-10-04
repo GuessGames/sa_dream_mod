@@ -13,6 +13,10 @@
 
 void CCrashReporter::FetchIP()
 {
+    // SA Dream Mod: crash logs are not sent to the upstream CoopAndreas server (they could not act on our builds);
+    // they are saved to CoopAndreas_crashes and the launcher offers to report them to the SA Dream Mod repository
+    ms_bReportingEnabled = false;
+
     if (!ms_bReportingEnabled)
     {
         logger::info("CCrashReporter::FetchIP - ms_bReportingEnabled is FALSE, crash logs won't be sent");

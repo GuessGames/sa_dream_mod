@@ -87,8 +87,9 @@ target("client", function()
         add_defines("DEBUG")
     else
         add_defines("NDEBUG")
-        set_strip("all")
         set_optimize("fastest")
+        -- a PDB next to the dll (never shipped): crash reports are symbolized with it
+        set_symbols("debug")
     end
 
     add_syslinks("kernel32", "user32", "ws2_32", "winmm", "Advapi32")
@@ -145,7 +146,8 @@ target("server", function ()
     else
         add_defines("NDEBUG")
         set_optimize("fastest")
-        set_strip("all")
+        -- a PDB next to the binaries (never shipped): crash reports are symbolized with it
+        set_symbols("debug")
     end
 
     add_deps("enet")
@@ -186,7 +188,8 @@ target("proxy", function ()
     else
         add_defines("NDEBUG")
         set_optimize("fastest")
-        set_strip("all")
+        -- a PDB next to the binaries (never shipped): crash reports are symbolized with it
+        set_symbols("debug")
     end
 end)
 
@@ -270,6 +273,7 @@ target("launcher", function ()
     else
         add_defines("NDEBUG")
         set_optimize("fastest")
-        set_strip("all")
+        -- a PDB next to the binaries (never shipped): crash reports are symbolized with it
+        set_symbols("debug")
     end
 end)

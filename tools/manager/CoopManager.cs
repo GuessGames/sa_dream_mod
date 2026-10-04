@@ -156,6 +156,11 @@ namespace CoopManager
             {"pPlay", new[]{"ГРАТИ", "PLAY"}},
             {"pLogs", new[]{"Логи", "Logs"}},
             {"pRepair", new[]{"Виправити", "Repair"}},
+            {"crashTitle", new[]{"Звіт про збій", "Crash report"}},
+            {"crashGame", new[]{"Гра", "The game"}},
+            {"crashServer", new[]{"Сервер", "The server"}},
+            {"crashAsk", new[]{"{0} аварійно завершилась ({1}).\n\nНадіслати звіт розробнику, щоб це виправили? Відкриється сторінка GitHub із заповненим звітом — натисніть «Submit new issue» (потрібен акаунт GitHub).\n\nПовний звіт також скопійовано в буфер обміну: якщо щось обрізано, вставте його в поле.", "{0} crashed ({1}).\n\nSend the report to the developer so it gets fixed? A GitHub page with the filled-in report opens — press \"Submit new issue\" (a GitHub account is needed).\n\nThe full report was also copied to the clipboard: paste it into the field if anything is cut."}},
+            {"crashLogged", new[]{"Новий звіт про збій: {0} (наглядач за крашами розбере його)", "New crash report: {0} (the crash watcher will analyze it)"}},
             {"pWorking", new[]{"Зачекайте…", "Please wait…"}},
             {"pReady", new[]{"Готово", "Ready"}},
             {"svTitle", new[]{"Сервер", "Server"}},
@@ -202,6 +207,7 @@ namespace CoopManager
         public int Port = 6767;
         public string Nick1 = "Tester1";
         public string Nick2 = "Tester2";
+        public long LastCrashSeen = 0;
 
         public static string AppDataDir { get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CoopAndreasManager"); } }
         static string FilePath { get { return Path.Combine(AppDataDir, Program.IsPlayerEdition ? "CoopLauncher.ini" : "CoopManager.ini"); } }
@@ -235,6 +241,7 @@ namespace CoopManager
                         case "Port": int.TryParse(v, out s.Port); break;
                         case "Nick1": s.Nick1 = v; break;
                         case "Nick2": s.Nick2 = v; break;
+                        case "LastCrashSeen": long.TryParse(v, out s.LastCrashSeen); break;
                     }
                 }
             }
@@ -321,6 +328,7 @@ namespace CoopManager
             sb.AppendLine("Port=" + Port);
             sb.AppendLine("Nick1=" + Nick1);
             sb.AppendLine("Nick2=" + Nick2);
+            sb.AppendLine("LastCrashSeen=" + LastCrashSeen);
             Directory.CreateDirectory(AppDataDir);
             File.WriteAllText(FilePath, sb.ToString(), new UTF8Encoding(false));
         }
@@ -974,12 +982,112 @@ namespace CoopManager
     }
 
     // ------------------------------------------------------------------ developer operations shared by GUI and CLI
+    // Crash reports that the game and the server write to <game>\CoopAndreas_crashes (*.log + *.dmp).
+    // The launcher offers to send a new one as a prefilled GitHub issue that the player submits himself
+    // (no tokens in a public app); the crash watcher on the developer PC reads the folder and the issues.
+    static class CrashReports
+    {
+        public const string IssueRepo = "GuessGames/sa_dream_mod";
+
+        public static string Dir(Settings s) { return Path.Combine(s.GameDir, "CoopAndreas_crashes"); }
+
+        // reports newer than the last one seen; the very first check only remembers "now"
+        public static List<FileInfo> TakeNew(Settings s)
+        {
+            var result = new List<FileInfo>();
+            if (s.LastCrashSeen == 0)
+            {
+                s.LastCrashSeen = DateTime.UtcNow.Ticks;
+                s.Save();
+                return result;
+            }
+            var dir = new DirectoryInfo(Dir(s));
+            if (!dir.Exists) return result;
+            result = dir.GetFiles("*.log").Where(f => f.LastWriteTimeUtc.Ticks > s.LastCrashSeen).OrderBy(f => f.LastWriteTimeUtc).ToList();
+            if (result.Count > 0)
+            {
+                s.LastCrashSeen = result.Max(f => f.LastWriteTimeUtc.Ticks);
+                s.Save();
+            }
+            return result;
+        }
+
+        // what a fix needs: the exception, the backtrace, the release and the last log lines
+        public static string Summary(string text, int max)
+        {
+            var lines = text.Replace("\r", "").Split('\n');
+            var sb = new StringBuilder();
+            string section = "head";
+            var tail = new List<string>();
+            foreach (var l in lines)
+            {
+                if (l.StartsWith("Register dump:") || l.StartsWith("Stack dump:") || l.StartsWith("Loaded modules:") ||
+                    l.StartsWith("Active scripts:") || l.StartsWith("Pools:")) section = "skip";
+                else if (l.StartsWith("Backtrace:")) section = "trace";
+                else if (l.StartsWith("Last log lines:")) section = "log";
+                else if (l.StartsWith("SA Dream Mod release:")) { sb.AppendLine(l); continue; }
+
+                if (section == "log") tail.Add(l);
+                else if (section != "skip" && l.Trim().Length > 0) sb.AppendLine(l);
+            }
+            if (tail.Count > 0)
+            {
+                sb.AppendLine(tail[0]);
+                foreach (var l in tail.Skip(Math.Max(1, tail.Count - 20))) sb.AppendLine(l);
+            }
+            string r = sb.ToString();
+            return r.Length > max ? r.Substring(0, max) + "\n…" : r;
+        }
+
+        public static string IssueUrl(FileInfo f, string text, string version)
+        {
+            string ex = text.Replace("\r", "").Split('\n').FirstOrDefault(l => l.StartsWith("Unhandled exception")) ?? f.Name;
+            string title = "[crash] " + (f.Name.StartsWith("server_") ? "server: " : "game: ") + ex.Trim();
+            string body = "Crash report `" + f.Name + "`, installed release " + (version.Length > 0 ? version : "?") + "\n\n```\n" +
+                          Summary(text, 2500) + "\n```\n\n(The full report is in the clipboard of the reporter.)";
+            return "https://github.com/" + IssueRepo + "/issues/new?labels=crash&title=" + Uri.EscapeDataString(title) +
+                   "&body=" + Uri.EscapeDataString(body);
+        }
+
+        // player launcher: asks about the newest new report
+        public static void CheckAndOffer(Form owner, Settings s, Installer installer)
+        {
+            List<FileInfo> fresh;
+            try { fresh = TakeNew(s); } catch { return; }
+            if (fresh.Count == 0) return;
+            var f = fresh.Last();
+            string text;
+            try { text = File.ReadAllText(f.FullName); } catch { return; }
+            string who = f.Name.StartsWith("server_") ? L.T("crashServer") : L.T("crashGame");
+            if (MessageBox.Show(owner, L.F("crashAsk", who, f.LastWriteTime.ToString("yyyy-MM-dd HH:mm")), L.T("crashTitle"),
+                    MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes)
+                return;
+            try { Clipboard.SetText(text); } catch { }
+            try { Process.Start(IssueUrl(f, text, installer.InstalledVersion)); } catch { }
+        }
+    }
+
     class DevOps
     {
         readonly Settings s;
         readonly Action<string> log;
         readonly Func<string, string, string, int> runTool;
         public DevOps(Settings settings, Action<string> logger, Func<string, string, string, int> tool) { s = settings; log = logger; runTool = tool; }
+
+        // binaries + PDBs of a published build (never published themselves): crash offsets -> functions and lines
+        public void ArchiveSymbols(string version)
+        {
+            string dir = Path.Combine(Path.GetDirectoryName(s.SourceDir.TrimEnd('\\')), "symbols", version);
+            Directory.CreateDirectory(dir);
+            string build = new Installer(s, log).BuildDir;
+            foreach (var n in new[] { "CoopAndreasSA.dll", "CoopAndreasSA.pdb", "server.exe", "server.pdb", "proxy.dll", "proxy.pdb" })
+            {
+                string p = Path.Combine(build, n);
+                if (File.Exists(p)) File.Copy(p, Path.Combine(dir, n), true);
+            }
+            File.WriteAllText(Path.Combine(dir, "commit.txt"), new Git(s).Get("rev-parse HEAD"), new UTF8Encoding(false));
+            log("symbols: " + dir);
+        }
 
         public bool Build()
         {
@@ -1045,6 +1153,7 @@ namespace CoopManager
                 new UTF8Encoding(false));
 
             string version = Manifest.Load(s.ReleaseDir).Version;
+            ArchiveSymbols(version);
             // files must be stored byte for byte, the manifest hashes them (no CRLF/LF conversion)
             File.WriteAllText(Path.Combine(s.ReleaseDir, ".gitattributes"), "* -text\n", new UTF8Encoding(false));
             if (runTool("git", "add -A --renormalize", s.ReleaseDir) != 0) return;
@@ -1142,6 +1251,13 @@ namespace CoopManager
             Theme.Apply(this);
             LoadArt(settings.GameDir, 0);
             Shown += delegate { if (settings.PlayerMode) RunBusy(() => CheckUpdates()); };
+            // the developer's own crashes go to the crash watcher, they are only listed here
+            var crashTimer = new System.Windows.Forms.Timer { Interval = 15000 };
+            crashTimer.Tick += delegate
+            {
+                try { foreach (var f in CrashReports.TakeNew(settings)) Log(L.F("crashLogged", f.FullName)); } catch { }
+            };
+            crashTimer.Start();
         }
 
         // ---- helpers
@@ -2417,7 +2533,11 @@ namespace CoopManager
             LoadArt(settings.GameDir, 12000);
             ApplyTexts();
             RefreshState();
-            Shown += delegate { RunBusy(CheckUpdates); };
+            Shown += delegate { RunBusy(CheckUpdates); CrashReports.CheckAndOffer(this, settings, installer); };
+            // a crash while the launcher stays open (the game was started from here)
+            var crashTimer = new System.Windows.Forms.Timer { Interval = 15000 };
+            crashTimer.Tick += delegate { if (!busy) CrashReports.CheckAndOffer(this, settings, installer); };
+            crashTimer.Start();
             FormClosing += delegate { SaveFields(); };
         }
 

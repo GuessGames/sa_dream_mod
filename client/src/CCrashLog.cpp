@@ -9,6 +9,8 @@
 #include "../resources.h"
 #include <Psapi.h>
 #include <CCrashReporter.h>
+#include <fstream>
+#include <deque>
 #pragma comment(lib, "Version.lib")
 #pragma comment(lib, "dbghelp.lib")
 
@@ -48,7 +50,10 @@ void GetModuleName(HMODULE moduleHandle, char* buffer)
     strcpy(buffer, "unknown");
 }
 
-void WriteBacktrace(CONTEXT* ctx) {
+void WriteBacktrace(CONTEXT* exceptionContext) {
+    // StackWalk64 unwinds the context it is given: walk a copy, the minidump needs the real registers
+    CONTEXT contextCopy = *exceptionContext;
+    CONTEXT* ctx = &contextCopy;
     HANDLE process = GetCurrentProcess();
     SymInitialize(process, NULL, TRUE);
     STACKFRAME64 stackFrame = {};
@@ -476,6 +481,36 @@ LONG __stdcall CCrashLog::ExceptionHandler(_EXCEPTION_POINTERS* exceptionInfo) {
     }
 
 
+    // SA Dream Mod: which release crashed (the launcher's install manifest) and what happened right before
+    {
+        std::ifstream manifest("_coop_backup\\install_manifest.txt");
+        std::string line, version = "unknown";
+        while (std::getline(manifest, line))
+        {
+            if (line.rfind("# version ", 0) == 0)
+            {
+                version = line.substr(10);
+                break;
+            }
+        }
+        WriteDumpf("\r\nSA Dream Mod release: %s, profile %d, host %d\r\n", version.c_str(), CCore::ms_nProfile, (int)CLocalPlayer::m_bIsHost);
+    }
+    fflush(stdout);
+    {
+        std::ifstream log("CoopAndreas\\logs\\client" + CCore::GetProfileSuffix() + ".log");
+        std::deque<std::string> last;
+        std::string line;
+        while (std::getline(log, line))
+        {
+            last.push_back(line);
+            if (last.size() > 60)
+                last.pop_front();
+        }
+        WriteDumpf("\r\nLast log lines:\r\n");
+        for (auto& l : last)
+            WriteDumpf("   %s\r\n", l.c_str());
+    }
+
     CreateDirectoryA("CoopAndreas_crashes", NULL);
 
     char filename[260];
@@ -489,6 +524,23 @@ LONG __stdcall CCrashLog::ExceptionHandler(_EXCEPTION_POINTERS* exceptionInfo) {
         WriteFile(hFile, ms_szCrashMessage, strlen(ms_szCrashMessage), NULL, NULL);
         CloseHandle(hFile);
         ms_bSuccessSavedLog = true;
+    }
+
+    // a small minidump (stacks + referenced memory, a few MB) next to the log, for symbolized analysis
+    {
+        std::string dumpName = std::string(filename, strlen(filename) - 4) + ".dmp";
+        HANDLE hDump = CreateFileA(dumpName.c_str(), GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+        if (hDump != INVALID_HANDLE_VALUE)
+        {
+            MINIDUMP_EXCEPTION_INFORMATION mdei;
+            mdei.ThreadId = GetCurrentThreadId();
+            mdei.ExceptionPointers = exceptionInfo;
+            mdei.ClientPointers = FALSE;
+            MiniDumpWriteDump(GetCurrentProcess(), GetCurrentProcessId(), hDump,
+                (MINIDUMP_TYPE)(MiniDumpNormal | MiniDumpWithIndirectlyReferencedMemory | MiniDumpWithThreadInfo | MiniDumpWithUnloadedModules),
+                &mdei, NULL, NULL);
+            CloseHandle(hDump);
+        }
     }
 
     HMODULE instance = GetModuleHandle("CoopAndreasSA.dll");

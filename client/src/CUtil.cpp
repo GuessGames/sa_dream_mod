@@ -322,23 +322,19 @@ std::string CUtil::GetWeaponName(eWeaponType type)
 
     return names[type];
 }
-// Rebuilds a remote player's model from his own clothes description, fat and muscle included.
-// CClothes::RebuildPlayer(ped, false) takes fat/muscle from the LOCAL stats (everyone looked like us) and stores the
-// description as the local player's "previous clothes" (0xBC1C78), so that one is kept as it was.
+// Rebuilds a remote player's model with his own fat and muscle. CClothes::RebuildPlayer(ped, false) reads them from
+// the (local) stats, so his values are put there for the call. The game's "previous clothes" record (0xBC1C78) must
+// stay as the rebuild leaves it: it describes the shared player model clump that the next rebuild reuses parts of;
+// restoring it made the next rebuild reuse freed geometry (crashes when loading cutscenes, bodies of other players).
 void CUtil::RebuildRemotePlayer(CPlayerPed* ped)
 {
-    uint8_t localPreviousClothes[0x78];
-    memcpy(localPreviousClothes, reinterpret_cast<void*>(0xBC1C78), sizeof(localPreviousClothes));
-
-    // the walk style (fat/muscular/normal) is picked from the stats while dressing: use his, not ours
     CPedClothesDesc* desc = ped->m_pPlayerData->m_pPedClothesDesc;
     float localFat = CStats::StatTypesFloat[STAT_FAT], localMuscle = CStats::StatTypesFloat[STAT_MUSCLE];
     CStats::StatTypesFloat[STAT_FAT] = desc->m_fFatStat;
     CStats::StatTypesFloat[STAT_MUSCLE] = desc->m_fMuscleStat;
 
-    CClothes::RebuildPlayer(ped, true);
+    CClothes::RebuildPlayer(ped, false);
 
     CStats::StatTypesFloat[STAT_FAT] = localFat;
     CStats::StatTypesFloat[STAT_MUSCLE] = localMuscle;
-    memcpy(reinterpret_cast<void*>(0xBC1C78), localPreviousClothes, sizeof(localPreviousClothes));
 }

@@ -68,6 +68,18 @@ PACKET_HANDLER(ePacketType::PLAYER_HANDSHAKE, Packets::System::PlayerHandshake* 
     // the ambient population (peds, traffic, parked cars) is generated only by the host,
     // everyone else receives the host's entities; see PLAYER_ASSIGN_HOST
     logger::info("Authenticated, playerid %d", pPlayerHandshake->yourid);
+
+    // our current look, stature and skills: otherwise the others see the default CJ until we change something
+    CPlayerPed* pLocalPlayer = FindPlayerPed(0);
+    if (pLocalPlayer && pLocalPlayer->m_pPlayerData && pLocalPlayer->m_pPlayerData->m_pPedClothesDesc)
+    {
+        Packets::Players::RebuildPlayer rebuildPlayer{};
+        rebuildPlayer.clothesDesc = *pLocalPlayer->m_pPlayerData->m_pPedClothesDesc;
+        rebuildPlayer.clothesDesc.m_fFatStat = CStats::GetStatValue(STAT_FAT);
+        rebuildPlayer.clothesDesc.m_fMuscleStat = CStats::GetStatValue(STAT_MUSCLE);
+        GetPacketFactory().Send(rebuildPlayer);
+    }
+    CStatsSync::NotifyChanged();
 }
 
 PACKET_HANDLER(ePacketType::RTT_BROADCAST, Packets::System::RTTBroadcast* pRTTBroadcast)
