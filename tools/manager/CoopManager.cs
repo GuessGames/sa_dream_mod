@@ -656,10 +656,24 @@ namespace CoopManager
             return wc;
         }
 
-        // the commit sha of the release branch, so that manifest and files are read from the same snapshot
-        // falls back to the branch name when the anonymous GitHub API limit (60/hour per IP) is exhausted
+        // the commit sha of the release branch, so that manifest and files are read from the same snapshot.
+        // Asked through git's own ref discovery: no API rate limit (60/hour per IP) and no CDN cache;
+        // a branch name is never used because raw.githubusercontent.com caches branches for minutes,
+        // which mixed an old manifest with new files ("checksum mismatch")
         string HeadSha()
         {
+            Exception last = null;
+            try
+            {
+                using (var wc = Client())
+                {
+                    wc.Headers[HttpRequestHeader.UserAgent] = "git/2.0";
+                    string refs = wc.DownloadString("https://github.com/" + s.ReleaseRepo + ".git/info/refs?service=git-upload-pack");
+                    var m = Regex.Match(refs, "([0-9a-f]{40}) refs/heads/main");
+                    if (m.Success) return m.Groups[1].Value;
+                }
+            }
+            catch (Exception ex) { last = ex; }
             try
             {
                 using (var wc = Client())
@@ -669,8 +683,8 @@ namespace CoopManager
                     if (m.Success) return m.Groups[1].Value;
                 }
             }
-            catch (WebException ex) { log("GitHub API unavailable (" + ex.Message + "), using the main branch"); }
-            return "main";
+            catch (Exception ex) { last = ex; }
+            throw new Exception("cannot reach GitHub" + (last != null ? ": " + last.Message : ""));
         }
 
         string RawUrl(string sha, string path) { return "https://raw.githubusercontent.com/" + s.ReleaseRepo + "/" + sha + "/" + path; }
