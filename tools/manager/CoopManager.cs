@@ -31,7 +31,7 @@ namespace CoopManager
         public static bool Uk = true;
         static readonly Dictionary<string, string[]> S = new Dictionary<string, string[]>
         {
-            {"title", new[]{"CoopAndreas — менеджер", "CoopAndreas Manager"}},
+            {"title", new[]{"SA Dream Mod — менеджер розробника", "SA Dream Mod — developer manager"}},
             {"tabInstall", new[]{"Встановлення", "Install"}},
             {"tabLaunch", new[]{"Запуск", "Launch"}},
             {"tabLogs", new[]{"Логи", "Logs"}},
@@ -116,6 +116,32 @@ namespace CoopManager
             {"busy", new[]{"Зачекайте, виконується інша операція…", "Please wait, another operation is running…"}},
             {"failed", new[]{"Помилка: {0}", "Error: {0}"}},
             {"gameRunning", new[]{"Гра запущена — закрийте її перед цією операцією.", "The game is running — close it before this operation."}},
+            {"pTitle", new[]{"SA Dream Mod", "SA Dream Mod"}},
+            {"pSubtitle", new[]{"Кооператив GTA San Andreas · на основі CoopAndreas", "GTA San Andreas co-op · based on CoopAndreas"}},
+            {"pGame", new[]{"Гра", "Game"}},
+            {"pFolder", new[]{"Тека гри", "Game folder"}},
+            {"pChange", new[]{"Змінити…", "Change…"}},
+            {"pExeNeeded", new[]{"Потрібен gta_sa.exe версії 1.0 US (архів або тека з ним):", "gta_sa.exe version 1.0 US is required (archive or folder):"}},
+            {"pChooseArchive", new[]{"Вказати…", "Choose…"}},
+            {"pInstall", new[]{"Встановити", "Install"}},
+            {"pUpdateTo", new[]{"Оновити до {0}", "Update to {0}"}},
+            {"pCheck", new[]{"Перевірити оновлення", "Check for updates"}},
+            {"pChecking", new[]{"Перевіряю оновлення…", "Checking for updates…"}},
+            {"pNotInstalled", new[]{"Мод ще не встановлено", "The mod is not installed yet"}},
+            {"pInstalledV", new[]{"Встановлено: {0}", "Installed: {0}"}},
+            {"pLatest", new[]{"У вас остання версія", "You have the latest version"}},
+            {"pNewAvail", new[]{"Доступна нова версія: {0}", "New version available: {0}"}},
+            {"pOffline", new[]{"Не вдалося перевірити оновлення", "Could not check for updates"}},
+            {"pPlayer", new[]{"Гравець", "Player"}},
+            {"pIpHint", new[]{"IP дає той, хто запускає сервер", "The server host gives you the IP"}},
+            {"pKey", new[]{"Ключ бета-тесту", "Beta key"}},
+            {"pHowKey", new[]{"Як отримати?", "How to get it?"}},
+            {"pHowKeyText", new[]{"1. Команду «{0}» скопійовано в буфер обміну.\n2. Зараз відкриється Discord CoopAndreas — вставте команду в будь-який канал.\n3. Бот надішле ключ — вставте його в поле «Ключ».", "1. The command \"{0}\" was copied to the clipboard.\n2. The CoopAndreas Discord opens now — paste the command into any channel.\n3. The bot sends you a key — paste it into the \"Key\" field."}},
+            {"pPlay", new[]{"ГРАТИ", "PLAY"}},
+            {"pLogs", new[]{"Логи", "Logs"}},
+            {"pRepair", new[]{"Виправити", "Repair"}},
+            {"pWorking", new[]{"Зачекайте…", "Please wait…"}},
+            {"pReady", new[]{"Готово", "Ready"}},
             {"noExe", new[]{"Потрібен gta_sa.exe версії 1.0 US: вкажіть архів або теку з ним на вкладці «Налаштування».", "gta_sa.exe 1.0 US is required: set the archive or folder containing it on the Settings tab."}},
         };
         public static string T(string key)
@@ -144,7 +170,7 @@ namespace CoopManager
         public string Nick2 = "Tester2";
 
         public static string AppDataDir { get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CoopAndreasManager"); } }
-        static string FilePath { get { return Path.Combine(AppDataDir, "CoopManager.ini"); } }
+        static string FilePath { get { return Path.Combine(AppDataDir, Program.IsPlayerEdition ? "CoopLauncher.ini" : "CoopManager.ini"); } }
 
         public static Settings Load()
         {
@@ -175,11 +201,12 @@ namespace CoopManager
                 }
             }
             // developer machine: the exe was built inside the source repo
-            if (s.SourceDir.Length == 0)
+            if (s.SourceDir.Length == 0 && !Program.IsPlayerEdition)
             {
                 string repo = FindRepoRoot(Path.GetDirectoryName(Application.ExecutablePath));
                 if (repo != null) { s.SourceDir = repo; s.PlayerMode = false; }
             }
+            if (Program.IsPlayerEdition) { s.PlayerMode = true; s.SourceDir = ""; }
             if (!File.Exists(Path.Combine(s.GameDir, "gta_sa.exe")))
             {
                 string found = FindGameDir();
@@ -309,7 +336,7 @@ namespace CoopManager
         public Installer(Settings settings, Action<string> logger) { s = settings; log = logger; }
 
         public string BuildDir { get { return Path.Combine(s.SourceDir, @"build\windows\x86\release"); } }
-        public string ManagerBuildPath { get { return Path.Combine(s.SourceDir, @"build\manager\CoopAndreasManager.exe"); } }
+        public string LauncherBuildPath { get { return Path.Combine(s.SourceDir, @"build\manager\" + Program.LauncherFileName); } }
         public string PlayerPackageDir { get { return Path.Combine(Settings.AppDataDir, "package"); } }
         public string DevPackageDir { get { return Path.Combine(Settings.AppDataDir, "dev_package"); } }
         public string PackageDir { get { return s.PlayerMode ? PlayerPackageDir : DevPackageDir; } }
@@ -419,21 +446,19 @@ namespace CoopManager
             Directory.CreateDirectory(Path.Combine(target, "scm"));
             foreach (var name in new[] { "CoopAndreasSA.dll", "proxy.dll", "LaunchCoopAndreas.exe", "LaunchCoopAndreas.exe.manifest", "server.exe" })
                 File.Copy(Path.Combine(BuildDir, name), Path.Combine(target, "bin", name), true);
-            // the release repo is private (collaborators only), so the whole "additional" set goes in,
-            // including vorbisHooked.dll and gta_sa.exe 1.0 US
+            // the release is public: Rockstar files (gta_sa.exe, the original vorbisFile.dll) are never included,
+            // vorbisHooked.dll is recreated from the player's own game and gta_sa.exe comes from his archive
             foreach (var f in Directory.GetFiles(Path.Combine(s.SourceDir, @"dist\additional")))
+            {
+                if (Path.GetFileName(f).Equals("vorbisHooked.dll", StringComparison.OrdinalIgnoreCase)) continue;
                 File.Copy(f, Path.Combine(target, "additional", Path.GetFileName(f)), true);
+            }
             foreach (var name in new[] { "main.scm", "script.img" })
                 File.Copy(Path.Combine(s.SourceDir, "scm", name), Path.Combine(target, "scm", name), true);
-            string exe = GetCompatibleExeFromSettings();
-            if (exe != null)
-            {
-                Directory.CreateDirectory(Path.Combine(target, "exe"));
-                File.Copy(exe, Path.Combine(target, @"exe\gta_sa.exe"), true);
-            }
-            else log("! gta_sa.exe 1.0 US not found (Settings → archive), the package goes without it");
-            string mgr = File.Exists(ManagerBuildPath) ? ManagerBuildPath : Application.ExecutablePath;
-            File.Copy(mgr, Path.Combine(target, "CoopAndreasManager.exe"), true);
+            foreach (var old in new[] { "CoopAndreasManager.exe" })
+                if (File.Exists(Path.Combine(target, old))) File.Delete(Path.Combine(target, old));
+            if (!File.Exists(LauncherBuildPath)) throw new Exception("build the launcher first: tools\\manager\\build.cmd");
+            File.Copy(LauncherBuildPath, Path.Combine(target, Program.LauncherFileName), true);
 
             var git = new Git(s);
             string head = git.Get("rev-parse --short HEAD");
@@ -599,54 +624,89 @@ namespace CoopManager
         }
     }
 
-    // ------------------------------------------------------------------ private release repo (prebuilt files), read with git
-    // The repo is private: git's credential manager asks the player to log in to GitHub once,
-    // only collaborators of the repo get access.
+    // ------------------------------------------------------------------ public release repo (download without git)
     class Release
     {
         readonly Settings s;
         readonly Action<string> log;
         public Release(Settings settings, Action<string> logger) { s = settings; log = logger; }
 
-        string Url { get { return "https://github.com/" + s.ReleaseRepo + ".git"; } }
-
-        int Git(string args, string workDir, out string output)
+        static WebClient Client()
         {
-            int code = new Git(s).Run(args, out output, workDir);
-            if (code != 0) log(output);
-            return code;
+            ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
+            var wc = new WebClient();
+            wc.Headers[HttpRequestHeader.UserAgent] = "CoopAndreasManager";
+            return wc;
         }
 
-        // the version on the server without touching the installed package; null if not downloaded yet
-        public Manifest FetchRemote(string pkgDir)
+        // the commit sha of the release branch, so that manifest and files are read from the same snapshot
+        // falls back to the branch name when the anonymous GitHub API limit (60/hour per IP) is exhausted
+        string HeadSha()
         {
-            if (!Directory.Exists(Path.Combine(pkgDir, ".git"))) return null;
-            string o;
-            if (Git("fetch --depth 1 origin main", pkgDir, out o) != 0) throw new Exception(L.T("releaseAccess"));
-            if (Git("show origin/main:manifest.txt", pkgDir, out o) != 0) throw new Exception("manifest.txt");
-            return Manifest.Parse(o);
+            try
+            {
+                using (var wc = Client())
+                {
+                    string json = wc.DownloadString("https://api.github.com/repos/" + s.ReleaseRepo + "/commits/main");
+                    var m = Regex.Match(json, "\"sha\"\\s*:\\s*\"([0-9a-f]{40})\"");
+                    if (m.Success) return m.Groups[1].Value;
+                }
+            }
+            catch (WebException ex) { log("GitHub API unavailable (" + ex.Message + "), using the main branch"); }
+            return "main";
         }
 
-        // clones or updates the package directory; returns true when the manager itself changed
+        string RawUrl(string sha, string path) { return "https://raw.githubusercontent.com/" + s.ReleaseRepo + "/" + sha + "/" + path; }
+
+        public Manifest FetchRemote(out string sha)
+        {
+            sha = HeadSha();
+            using (var wc = Client())
+            {
+                wc.Encoding = Encoding.UTF8;
+                return Manifest.Parse(wc.DownloadString(RawUrl(sha, "manifest.txt")));
+            }
+        }
+
+        // downloads changed files into the player package directory; returns true when the manager itself changed
         public bool Download(string pkgDir)
         {
-            string o;
-            if (!Directory.Exists(Path.Combine(pkgDir, ".git")))
+            string sha;
+            var remote = FetchRemote(out sha);
+            log("release " + remote.Version + " (" + (sha.Length > 7 ? sha.Substring(0, 7) : sha) + ")");
+            Directory.CreateDirectory(pkgDir);
+            bool managerChanged = false;
+            using (var wc = Client())
             {
-                if (Directory.Exists(pkgDir)) Directory.Delete(pkgDir, true);
-                Directory.CreateDirectory(Path.GetDirectoryName(pkgDir));
-                log("git clone " + Url);
-                if (Git("clone --depth 1 -b main \"" + Url + "\" \"" + pkgDir + "\"", Path.GetDirectoryName(pkgDir), out o) != 0)
-                    throw new Exception(L.T("releaseAccess"));
+                foreach (var kv in remote.Files)
+                {
+                    string dst = Path.Combine(pkgDir, kv.Key.Replace('/', '\\'));
+                    if (File.Exists(dst) && Installer.Sha256(dst) == kv.Value) continue;
+                    Directory.CreateDirectory(Path.GetDirectoryName(dst));
+                    string tmp = dst + ".download";
+                    wc.DownloadFile(RawUrl(sha, kv.Key), tmp);
+                    if (Installer.Sha256(tmp) != kv.Value) { File.Delete(tmp); throw new Exception("checksum mismatch: " + kv.Key); }
+                    if (File.Exists(dst)) File.Delete(dst);
+                    File.Move(tmp, dst);
+                    log("download: " + kv.Key);
+                    if (kv.Key == Program.LauncherFileName) managerChanged = true;
+                }
             }
-            else
+            // files that are no longer part of the release
+            var local = Manifest.Load(pkgDir);
+            if (local != null)
+                foreach (var old in local.Files.Keys.Where(k => !remote.Files.ContainsKey(k)))
+                {
+                    string p = Path.Combine(pkgDir, old.Replace('/', '\\'));
+                    if (File.Exists(p)) File.Delete(p);
+                }
+            using (var wc = Client())
             {
-                if (Git("fetch --depth 1 origin main", pkgDir, out o) != 0) throw new Exception(L.T("releaseAccess"));
-                if (Git("reset --hard origin/main", pkgDir, out o) != 0) throw new Exception(o);
+                wc.Encoding = Encoding.UTF8;
+                File.WriteAllText(Path.Combine(pkgDir, "manifest.txt"), wc.DownloadString(RawUrl(sha, "manifest.txt")), new UTF8Encoding(false));
             }
-            var m = Manifest.Load(pkgDir);
-            log("release " + (m != null ? m.Version : "?"));
-            return SelfUpdate(Path.Combine(pkgDir, "CoopAndreasManager.exe"));
+            // only the player launcher updates itself; the developer manager is built from source
+            return managerChanged && Program.IsPlayerEdition && SelfUpdate(Path.Combine(pkgDir, Program.LauncherFileName));
         }
 
         // a running exe cannot be overwritten but can be renamed: swap it and ask for a restart
@@ -863,17 +923,18 @@ namespace CoopManager
             string sourceUrl = Regex.Replace(git.OriginUrl(), @"\.git$", "");
             string readme = Path.Combine(s.ReleaseDir, "README.md");
             File.WriteAllText(readme,
-                "# sa_dream_mod — release\n\n" +
-                "Prebuilt files of our CoopAndreas build. Install and update them with `CoopAndreasManager.exe`.\n\n" +
-                "Готові файли нашої збірки CoopAndreas. Встановлення й оновлення — через `CoopAndreasManager.exe`.\n\n" +
-                "1. Install Git for Windows / встановіть Git for Windows: https://git-scm.com/download/win\n" +
-                "2. Download / завантажте `CoopAndreasManager.exe` (open the file → Download raw file).\n" +
-                "3. Settings / Налаштування: check the game folder (found automatically) / перевірте теку гри (шукається автоматично).\n" +
-                "4. Install → Update and install / Встановлення → Оновити і встановити (git asks for your GitHub login once).\n" +
-                "5. Launch → Launch game / Запуск → Запустити гру.\n\n" +
-                "- `gta_sa.exe` 1.0 US is included and replaced automatically, the original is kept in `_coop_backup` / входить у реліз.\n" +
-                "- Source code of this version (GPL-3.0), available on request / код цієї версії за запитом: " + sourceUrl + "/tree/" + head + "\n" +
-                "- Based on [CoopAndreas](https://github.com/Tornamic/CoopAndreas) (GPL-3.0).\n", new UTF8Encoding(false));
+                "# SA Dream Mod — release\n\n" +
+                "Ready-to-install files of **SA Dream Mod** (a CoopAndreas based co-op for GTA San Andreas).\n" +
+                "Готові файли **SA Dream Mod** (кооператив GTA San Andreas на основі CoopAndreas).\n\n" +
+                "## How to play / Як грати\n\n" +
+                "1. Download `" + Program.LauncherFileName + "` (open it above → *Download raw file*) / завантажте лаунчер.\n" +
+                "2. Run it, check the game folder, press **Install** / запустіть, перевірте теку гри, натисніть **Встановити**.\n" +
+                "3. Enter nickname, server IP and the beta key, press **PLAY** / введіть нік, IP і ключ, натисніть **ГРАТИ**.\n\n" +
+                "`gta_sa.exe` 1.0 US is not included (Rockstar file) — the launcher asks for it if your game needs it.\n" +
+                "`gta_sa.exe` 1.0 US не входить у реліз (файл Rockstar) — лаунчер попросить його, якщо потрібно.\n\n" +
+                "- Source code of this version (GPL-3.0): " + sourceUrl + "/tree/" + head + "\n" +
+                "- Based on [CoopAndreas](https://github.com/Tornamic/CoopAndreas) by Tornamic and contributors (GPL-3.0).\n",
+                new UTF8Encoding(false));
 
             string version = Manifest.Load(s.ReleaseDir).Version;
             if (runTool("git", "add -A", s.ReleaseDir) != 0) return;
@@ -883,7 +944,7 @@ namespace CoopManager
     }
 
     // ------------------------------------------------------------------ main window
-    class MainForm : Form
+    class DevForm : Form
     {
         readonly Settings settings = Settings.Load();
         Installer installer;
@@ -906,7 +967,7 @@ namespace CoopManager
         string logCurrentFile;
         readonly List<string> logLines = new List<string>();
 
-        public MainForm()
+        public DevForm()
         {
             L.Uk = settings.Ukrainian;
             installer = new Installer(settings, Log);
@@ -916,13 +977,16 @@ namespace CoopManager
             StartPosition = FormStartPosition.CenterScreen;
             try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
 
-            btnLang = new Button { Anchor = AnchorStyles.Top | AnchorStyles.Right, Size = new Size(110, 26), Location = new Point(ClientSize.Width - 118, 4) };
+            var header = Theme.HeaderPanel(this, "SA Dream Mod · Developer", "build · install · test · publish", 66);
+            btnLang = new Button { Anchor = AnchorStyles.Top | AnchorStyles.Right, Size = new Size(110, 30), Location = new Point(ClientSize.Width - 126, 18), Tag = "header" };
+            Theme.StyleButton(btnLang, Color.FromArgb(52, 56, 70), Color.White);
             btnLang.Click += delegate { L.Uk = !L.Uk; settings.Ukrainian = L.Uk; settings.Save(); ApplyTexts(); RefreshStatus(); };
             Reg(btnLang, "lang");
-            Controls.Add(btnLang);
+            header.Controls.Add(btnLang);
 
-            tabs = new TabControl { Location = new Point(6, 34), Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right };
-            tabs.Size = new Size(ClientSize.Width - 12, ClientSize.Height - 40);
+            ClientSize = new Size(ClientSize.Width, ClientSize.Height + 34);
+            tabs = new TabControl { Location = new Point(6, 72), Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right };
+            tabs.Size = new Size(ClientSize.Width - 12, ClientSize.Height - 78);
             Controls.Add(tabs);
 
             BuildInstallTab();
@@ -937,6 +1001,8 @@ namespace CoopManager
             logTimer.Tick += delegate { PollLog(); };
             logTimer.Start();
             FormClosing += delegate { StopServer(); };
+            BackColor = Theme.Back;
+            Theme.Apply(this);
             Shown += delegate { if (settings.PlayerMode) RunBusy(() => CheckUpdates()); };
         }
 
@@ -954,9 +1020,16 @@ namespace CoopManager
             parent.Controls.Add(l);
             return l;
         }
+        static readonly string[] PrimaryKeys = { "install", "update", "launchTest", "startServer", "save" };
+        static readonly string[] PlayKeys = { "launchGame" };
+        static readonly string[] DangerKeys = { "uninstall", "killGames", "stopServer" };
+
         Button Btn(Control parent, string key, int x, int y, int w, EventHandler click)
         {
-            var b = new Button { Location = new Point(x, y), Size = new Size(w, 30) };
+            var b = new Button { Location = new Point(x, y), Size = new Size(w, 32) };
+            if (PrimaryKeys.Contains(key)) b.Tag = "primary";
+            else if (PlayKeys.Contains(key)) b.Tag = "play";
+            else if (DangerKeys.Contains(key)) b.Tag = "danger";
             Reg(b, key);
             b.Click += click;
             parent.Controls.Add(b);
@@ -1088,8 +1161,8 @@ namespace CoopManager
         void CheckUpdates()
         {
             if (!settings.PlayerMode) return;
-            var remote = new Release(settings, Log).FetchRemote(installer.PlayerPackageDir);
-            if (remote == null) { Log(L.T("pkgMissing")); return; }
+            string sha;
+            var remote = new Release(settings, Log).FetchRemote(out sha);
             string installed = installer.InstalledVersion;
             string msg = installed == remote.Version ? L.F("upToDate", installed) : L.F("newVersion", remote.Version, installed.Length > 0 ? installed : "—");
             Log(msg);
@@ -1152,7 +1225,7 @@ namespace CoopManager
             rbDev.Enabled = dev;
             btnBuild.Enabled = dev && !settings.PlayerMode;
             btnPublish.Enabled = dev && !settings.PlayerMode;
-            lbDev.Text = dev ? L.F("devInfo", git.OriginUrl(), git.Get("rev-parse --abbrev-ref HEAD"), git.Get("log -1 --format=%h %s")) : "";
+            lbDev.Text = dev ? L.F("devInfo", git.OriginUrl(), git.Get("rev-parse --abbrev-ref HEAD"), git.Get("log -1 --format=\"%h %s\"")) : "";
             UpdateServerLabel();
         }
 
@@ -1426,8 +1499,387 @@ namespace CoopManager
         }
     }
 
+    // ------------------------------------------------------------------ look & feel shared by both editions
+    static class Theme
+    {
+        public static readonly Color Header = Color.FromArgb(28, 30, 38);
+        public static readonly Color HeaderText = Color.White;
+        public static readonly Color HeaderSub = Color.FromArgb(170, 176, 190);
+        public static readonly Color Back = Color.FromArgb(243, 244, 247);
+        public static readonly Color Card = Color.White;
+        public static readonly Color Text = Color.FromArgb(30, 32, 40);
+        public static readonly Color Muted = Color.FromArgb(105, 110, 125);
+        public static readonly Color Accent = Color.FromArgb(0, 103, 192);
+        public static readonly Color Play = Color.FromArgb(16, 137, 62);
+        public static readonly Color Danger = Color.FromArgb(196, 43, 28);
+        public static readonly Color Neutral = Color.FromArgb(226, 229, 235);
+        public static readonly Color Ok = Color.FromArgb(16, 124, 16);
+        public static readonly Color Warn = Color.FromArgb(202, 80, 16);
+
+        public static Font Base(float size = 10f, FontStyle style = FontStyle.Regular) { return new Font("Segoe UI", size, style); }
+        public static Font Semi(float size) { return new Font("Segoe UI Semibold", size); }
+
+        public static void StyleButton(Button b, Color back, Color fore)
+        {
+            b.FlatStyle = FlatStyle.Flat;
+            b.FlatAppearance.BorderSize = 0;
+            b.FlatAppearance.MouseOverBackColor = ControlPaint.Light(back, 0.15f);
+            b.FlatAppearance.MouseDownBackColor = ControlPaint.Dark(back, 0.05f);
+            b.BackColor = back;
+            b.ForeColor = fore;
+            b.Cursor = Cursors.Hand;
+            b.UseVisualStyleBackColor = false;
+        }
+
+        // flat neutral buttons + readable fonts everywhere; buttons tagged "primary"/"play"/"danger" get colors
+        public static void Apply(Control root)
+        {
+            foreach (Control c in root.Controls)
+            {
+                var b = c as Button;
+                if (b != null)
+                {
+                    string tag = b.Tag as string;
+                    if (tag == "primary") StyleButton(b, Accent, Color.White);
+                    else if (tag == "play") StyleButton(b, Play, Color.White);
+                    else if (tag == "danger") StyleButton(b, Danger, Color.White);
+                    else if (tag != "header") StyleButton(b, Neutral, Text);
+                }
+                else if (c is GroupBox) { c.ForeColor = Text; c.Font = Semi(10f); foreach (Control cc in c.Controls) cc.Font = Base(9.75f); }
+                else if (c is TabPage) c.BackColor = Back;
+                Apply(c);
+            }
+        }
+
+        public static Panel HeaderPanel(Form f, string title, string subtitle, int height)
+        {
+            var h = new Panel { Dock = DockStyle.Top, Height = height, BackColor = Header };
+            h.Controls.Add(new Label { Text = title, ForeColor = HeaderText, Font = Semi(17f), AutoSize = true, Location = new Point(18, 10), BackColor = Header });
+            h.Controls.Add(new Label { Text = subtitle, ForeColor = HeaderSub, Font = Base(9.5f), AutoSize = true, Location = new Point(20, 44), BackColor = Header });
+            f.Controls.Add(h);
+            return h;
+        }
+    }
+
+    // ------------------------------------------------------------------ simple launcher for players
+    class PlayerForm : Form
+    {
+        readonly Settings settings = Settings.Load();
+        Installer installer;
+        volatile bool busy;
+        string remoteVersion;
+
+        Label lbTitle, lbSub, lbFolderCap, lbFolder, lbExeCap, lbModState, lbUpdate, lbStatus, lbPlayerCap, lbKeyCap, lbNick, lbIp, lbPort, lbKey, lbIpHint;
+        Button btnLang, btnFolder, btnExe, btnMain, btnPlay, btnHowKey, btnLogs, btnRepair, btnUninstall;
+        TextBox tbNick, tbIp, tbPort, tbKey;
+        Panel cardGame, cardPlayer;
+        readonly List<Button> actionButtons = new List<Button>();
+
+        public PlayerForm()
+        {
+            L.Uk = settings.Ukrainian;
+            installer = new Installer(settings, SetStatus);
+            Text = "SA Dream Mod";
+            Font = Theme.Base();
+            BackColor = Theme.Back;
+            FormBorderStyle = FormBorderStyle.FixedSingle;
+            MaximizeBox = false;
+            StartPosition = FormStartPosition.CenterScreen;
+            ClientSize = new Size(540, 650);
+            try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
+
+            var header = Theme.HeaderPanel(this, L.T("pTitle"), L.T("pSubtitle"), 72);
+            lbTitle = (Label)header.Controls[0];
+            lbSub = (Label)header.Controls[1];
+            btnLang = new Button { Size = new Size(96, 30), Location = new Point(ClientSize.Width - 112, 20), Tag = "header", Font = Theme.Base(9.5f) };
+            Theme.StyleButton(btnLang, Color.FromArgb(52, 56, 70), Color.White);
+            btnLang.Click += delegate { L.Uk = !L.Uk; settings.Ukrainian = L.Uk; settings.Save(); ApplyTexts(); RefreshState(); };
+            header.Controls.Add(btnLang);
+
+            int x = 18, w = ClientSize.Width - 36;
+
+            // --- game card
+            cardGame = Card(x, 88, w, 150);
+            lbFolderCap = Caption(cardGame, 14, 10);
+            lbFolder = new Label { Location = new Point(14, 32), Size = new Size(w - 130, 22), AutoEllipsis = true, ForeColor = Theme.Text };
+            cardGame.Controls.Add(lbFolder);
+            btnFolder = SmallButton(cardGame, w - 108, 28, 94);
+            btnFolder.Click += delegate { ChooseFolder(); };
+            lbModState = new Label { Location = new Point(14, 64), Size = new Size(w - 28, 22), Font = Theme.Semi(10.5f) };
+            lbUpdate = new Label { Location = new Point(14, 88), Size = new Size(w - 28, 22), ForeColor = Theme.Muted };
+            cardGame.Controls.Add(lbModState);
+            cardGame.Controls.Add(lbUpdate);
+            lbExeCap = new Label { Location = new Point(14, 116), Size = new Size(w - 130, 22), ForeColor = Theme.Warn };
+            cardGame.Controls.Add(lbExeCap);
+            btnExe = SmallButton(cardGame, w - 108, 112, 94);
+            btnExe.Click += delegate { ChooseExeSource(); };
+
+            btnMain = new Button { Location = new Point(x, 248), Size = new Size(w, 46), Tag = "primary", Font = Theme.Semi(12f) };
+            btnMain.Click += delegate { OnMainButton(); };
+            Controls.Add(btnMain);
+            actionButtons.Add(btnMain);
+
+            // --- player card
+            cardPlayer = Card(x, 306, w, 196);
+            lbPlayerCap = Caption(cardPlayer, 14, 10);
+            lbNick = FieldLabel(cardPlayer, 14, 40);
+            tbNick = Field(cardPlayer, 150, 37, 220, settings.Nick);
+            lbIp = FieldLabel(cardPlayer, 14, 74);
+            tbIp = Field(cardPlayer, 150, 71, 170, settings.Ip);
+            lbPort = new Label { Location = new Point(330, 74), Size = new Size(50, 24), ForeColor = Theme.Muted };
+            cardPlayer.Controls.Add(lbPort);
+            tbPort = Field(cardPlayer, 382, 71, 80, settings.Port.ToString());
+            lbIpHint = new Label { Location = new Point(150, 100), Size = new Size(320, 20), ForeColor = Theme.Muted, Font = Theme.Base(8.75f) };
+            cardPlayer.Controls.Add(lbIpHint);
+            lbKeyCap = Caption(cardPlayer, 14, 128);
+            lbKey = FieldLabel(cardPlayer, 14, 158);
+            tbKey = Field(cardPlayer, 150, 155, 170, Serial.GetSerial());
+            tbKey.TextChanged += delegate { Serial.SetSerial(tbKey.Text.Trim()); };
+            btnHowKey = SmallButton(cardPlayer, 330, 153, 132);
+            btnHowKey.Click += delegate { HowToGetKey(); };
+
+            btnPlay = new Button { Location = new Point(x, 514), Size = new Size(w, 56), Tag = "play", Font = Theme.Semi(15f) };
+            btnPlay.Click += delegate { Play(); };
+            Controls.Add(btnPlay);
+            actionButtons.Add(btnPlay);
+
+            // --- footer
+            lbStatus = new Label { Location = new Point(x, 582), Size = new Size(w, 22), ForeColor = Theme.Muted, AutoEllipsis = true };
+            Controls.Add(lbStatus);
+            btnLogs = SmallButton(this, x, 608, 120);
+            btnLogs.Click += delegate { Directory.CreateDirectory(installer.LogsDir); Process.Start("explorer.exe", installer.LogsDir); };
+            btnRepair = SmallButton(this, x + 128, 608, 120);
+            btnRepair.Click += delegate { if (EnsureWritable()) RunBusy(() => installer.Repair()); };
+            btnUninstall = SmallButton(this, x + w - 150, 608, 150);
+            btnUninstall.Tag = "danger";
+            btnUninstall.Click += delegate
+            {
+                if (EnsureWritable() && MessageBox.Show(L.T("confirmUninstall"), Text, MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
+                    RunBusy(() => installer.Uninstall());
+            };
+            actionButtons.AddRange(new[] { btnRepair, btnUninstall });
+
+            Theme.Apply(this);
+            ApplyTexts();
+            RefreshState();
+            Shown += delegate { RunBusy(CheckUpdates); };
+            FormClosing += delegate { SaveFields(); };
+        }
+
+        Panel Card(int x, int y, int w, int h)
+        {
+            var c = new Panel { Location = new Point(x, y), Size = new Size(w, h), BackColor = Theme.Card };
+            Controls.Add(c);
+            return c;
+        }
+        Label Caption(Control parent, int x, int y)
+        {
+            var l = new Label { Location = new Point(x, y), AutoSize = true, Font = Theme.Semi(11f), ForeColor = Theme.Text };
+            parent.Controls.Add(l);
+            return l;
+        }
+        Label FieldLabel(Control parent, int x, int y)
+        {
+            var l = new Label { Location = new Point(x, y), Size = new Size(134, 24), ForeColor = Theme.Muted };
+            parent.Controls.Add(l);
+            return l;
+        }
+        TextBox Field(Control parent, int x, int y, int w, string value)
+        {
+            var t = new TextBox { Location = new Point(x, y), Width = w, Text = value, Font = Theme.Base(10.5f), BorderStyle = BorderStyle.FixedSingle };
+            parent.Controls.Add(t);
+            return t;
+        }
+        Button SmallButton(Control parent, int x, int y, int w)
+        {
+            var b = new Button { Location = new Point(x, y), Size = new Size(w, 30), Font = Theme.Base(9.5f) };
+            parent.Controls.Add(b);
+            return b;
+        }
+
+        void ApplyTexts()
+        {
+            lbTitle.Text = L.T("pTitle");
+            lbSub.Text = L.T("pSubtitle");
+            btnLang.Text = L.T("lang");
+            lbFolderCap.Text = L.T("pFolder");
+            btnFolder.Text = L.T("pChange");
+            lbExeCap.Text = L.T("pExeNeeded");
+            btnExe.Text = L.T("pChooseArchive");
+            lbPlayerCap.Text = L.T("pPlayer");
+            lbNick.Text = L.T("nick");
+            lbIp.Text = L.T("ip");
+            lbPort.Text = L.T("port");
+            lbIpHint.Text = L.T("pIpHint");
+            lbKeyCap.Text = L.T("pKey");
+            lbKey.Text = L.T("serialKey");
+            btnHowKey.Text = L.T("pHowKey");
+            btnPlay.Text = L.T("pPlay");
+            btnLogs.Text = L.T("pLogs");
+            btnRepair.Text = L.T("pRepair");
+            btnUninstall.Text = L.T("uninstall");
+        }
+
+        void SetStatus(string line)
+        {
+            if (lbStatus == null) return;
+            if (lbStatus.InvokeRequired) { lbStatus.BeginInvoke(new Action<string>(SetStatus), line); return; }
+            lbStatus.Text = line;
+        }
+
+        void RefreshState()
+        {
+            installer = new Installer(settings, SetStatus);
+            lbFolder.Text = settings.GameDir;
+            bool gameFound = File.Exists(Path.Combine(settings.GameDir, "gta_sa.exe"));
+            lbFolder.ForeColor = gameFound ? Theme.Text : Theme.Danger;
+            if (!gameFound) lbFolder.Text = settings.GameDir + "  —  " + L.T("exeMissing");
+
+            bool installed = installer.IsInstalled;
+            lbModState.Text = installed ? L.F("pInstalledV", installer.InstalledVersion) : L.T("pNotInstalled");
+            lbModState.ForeColor = installed ? Theme.Ok : Theme.Warn;
+
+            if (remoteVersion == null) lbUpdate.Text = busy ? L.T("pChecking") : "";
+            else if (remoteVersion.Length == 0) lbUpdate.Text = L.T("pOffline");
+            else lbUpdate.Text = installed && installer.InstalledVersion == remoteVersion ? L.T("pLatest") : L.F("pNewAvail", remoteVersion);
+
+            // gta_sa.exe 1.0 US is only asked for when the game has another version and no source was given yet
+            string exe = Path.Combine(settings.GameDir, "gta_sa.exe");
+            bool needExe = gameFound && new FileInfo(exe).Length != Installer.Exe10UsSize && installer.GetCompatibleExe() == null;
+            lbExeCap.Visible = btnExe.Visible = needExe;
+
+            if (!installed) btnMain.Text = L.T("pInstall");
+            else if (!string.IsNullOrEmpty(remoteVersion) && remoteVersion != installer.InstalledVersion) btnMain.Text = L.F("pUpdateTo", remoteVersion);
+            else btnMain.Text = L.T("pCheck");
+
+            foreach (var b in actionButtons) b.Enabled = !busy;
+            btnPlay.Enabled = !busy && installed;
+            btnRepair.Enabled = btnUninstall.Enabled = !busy && installed;
+            btnMain.Enabled = !busy && gameFound && !needExe;
+            UseWaitCursor = busy;
+        }
+
+        void RunBusy(Action work)
+        {
+            if (busy) return;
+            busy = true;
+            SetStatus(L.T("pWorking"));
+            RefreshState();
+            var t = new Thread(() =>
+            {
+                try { work(); if (lbStatus.Text == L.T("pWorking")) SetStatus(L.T("pReady")); }
+                catch (Exception ex) { SetStatus(L.F("failed", ex.Message)); }
+                finally
+                {
+                    busy = false;
+                    BeginInvoke(new Action(RefreshState));
+                }
+            });
+            t.IsBackground = true;
+            t.Start();
+        }
+
+        void CheckUpdates()
+        {
+            try
+            {
+                string sha;
+                remoteVersion = new Release(settings, s => { }).FetchRemote(out sha).Version;
+            }
+            catch { remoteVersion = ""; }
+        }
+
+        void OnMainButton()
+        {
+            if (installer.IsInstalled && (string.IsNullOrEmpty(remoteVersion) || remoteVersion == installer.InstalledVersion))
+            {
+                RunBusy(CheckUpdates);
+                return;
+            }
+            if (!EnsureWritable()) return;
+            RunBusy(() =>
+            {
+                bool restart = new Release(settings, SetStatus).Download(installer.PlayerPackageDir);
+                installer.Install(true);
+                CheckUpdates();
+                if (restart)
+                {
+                    BeginInvoke(new Action(() =>
+                    {
+                        MessageBox.Show(L.T("selfUpdated"), Text);
+                        Process.Start(Application.ExecutablePath);
+                        Close();
+                    }));
+                }
+            });
+        }
+
+        bool EnsureWritable()
+        {
+            if (installer.IsGameDirWritable()) return true;
+            if (MessageBox.Show(L.T("notWritable"), Text, MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return false;
+            return installer.GrantGameDirAccess();
+        }
+
+        void ChooseFolder()
+        {
+            using (var d = new FolderBrowserDialog { SelectedPath = settings.GameDir })
+            {
+                if (d.ShowDialog() != DialogResult.OK) return;
+                settings.GameDir = d.SelectedPath;
+                settings.Save();
+                RefreshState();
+            }
+        }
+
+        void ChooseExeSource()
+        {
+            using (var d = new OpenFileDialog { Filter = "additional.zip / gta_sa.exe|*.zip;gta_sa.exe|*.*|*.*" })
+            {
+                if (d.ShowDialog() != DialogResult.OK) return;
+                settings.AdditionalZip = d.FileName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? Path.GetDirectoryName(d.FileName) : d.FileName;
+                settings.Save();
+                RefreshState();
+                if (lbExeCap.Visible) SetStatus(L.T("noExe"));
+            }
+        }
+
+        void HowToGetKey()
+        {
+            string cmd = "/gen " + Serial.GetPcId();
+            try { Clipboard.SetText(cmd); } catch { }
+            MessageBox.Show(L.F("pHowKeyText", cmd), L.T("pKey"), MessageBoxButtons.OK, MessageBoxIcon.Information);
+            Process.Start("https://discord.gg/Z3ugSgFJMU");
+        }
+
+        void SaveFields()
+        {
+            settings.Nick = tbNick.Text.Trim();
+            settings.Ip = tbIp.Text.Trim();
+            int port;
+            if (int.TryParse(tbPort.Text.Trim(), out port)) settings.Port = port;
+            settings.Save();
+        }
+
+        void Play()
+        {
+            SaveFields();
+            if (string.IsNullOrEmpty(Serial.GetSerial())) { MessageBox.Show(L.T("needSerial"), Text); tbKey.Focus(); return; }
+            if (settings.Nick.Length == 0) { tbNick.Focus(); return; }
+            try { SetStatus(GameLauncher.Launch(settings, 0, settings.Nick, settings.Ip, -1, false)); }
+            catch (Exception ex) { MessageBox.Show(L.F("failed", ex.Message), Text); }
+        }
+    }
+
     static class Program
     {
+#if PLAYER
+        public const bool IsPlayerEdition = true;
+#else
+        public const bool IsPlayerEdition = false;
+#endif
+        public const string LauncherFileName = "SADreamLauncher.exe";
+
         [DllImport("kernel32.dll")]
         static extern bool AttachConsole(int pid);
 
@@ -1512,7 +1964,11 @@ namespace CoopManager
             if (args.Length > 0) return RunCli(args);
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
-            Application.Run(new MainForm());
+#if PLAYER
+            Application.Run(new PlayerForm());
+#else
+            Application.Run(new DevForm());
+#endif
             return 0;
         }
     }
