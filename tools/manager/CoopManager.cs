@@ -344,7 +344,7 @@ namespace CoopManager
             foreach (var f in Directory.GetFiles(dir, "*", SearchOption.AllDirectories))
             {
                 string rel = f.Substring(dir.TrimEnd('\\').Length + 1).Replace('\\', '/');
-                if (rel == "manifest.txt" || rel.StartsWith(".git") || rel.StartsWith("source/") || rel == "README.md") continue;
+                if (rel == "manifest.txt" || rel.StartsWith(".git") || rel.StartsWith("source/") || rel.StartsWith("dev/") || rel == "README.md") continue;
                 m.Files[rel] = Installer.Sha256(f);
             }
             var sb = new StringBuilder();
@@ -989,6 +989,14 @@ namespace CoopManager
             if (Directory.Exists(srcDir)) Directory.Delete(srcDir, true);
             File.Copy(Path.Combine(s.SourceDir, "LICENSE"), Path.Combine(s.ReleaseDir, "LICENSE"), true);
 
+            // the developer manager is published next to the launcher (not part of the player package/manifest)
+            string devManager = Path.Combine(s.SourceDir, @"build\manager\CoopAndreasManager.exe");
+            if (File.Exists(devManager))
+            {
+                Directory.CreateDirectory(Path.Combine(s.ReleaseDir, "dev"));
+                File.Copy(devManager, Path.Combine(s.ReleaseDir, @"dev\CoopAndreasManager.exe"), true);
+            }
+
             string head = git.Get("rev-parse HEAD");
             string sourceUrl = Regex.Replace(git.OriginUrl(), @"\.git$", "");
             string readme = Path.Combine(s.ReleaseDir, "README.md");
@@ -997,6 +1005,7 @@ namespace CoopManager
                 "Ready-to-install files of **SA Dream Mod** (a CoopAndreas based co-op for GTA San Andreas).\n" +
                 "Готові файли **SA Dream Mod** (кооператив GTA San Andreas на основі CoopAndreas).\n\n" +
                 "## ⬇️ [Download the launcher / Завантажити лаунчер](https://github.com/" + s.ReleaseRepo + "/raw/main/" + Program.LauncherFileName + ")\n\n" +
+                "## ⬇️ [Download the developer manager / Завантажити менеджер розробника](https://github.com/" + s.ReleaseRepo + "/raw/main/dev/CoopAndreasManager.exe)\n\n" +
                 "Or the latest one on the [Releases](https://github.com/" + s.ReleaseRepo + "/releases/latest) page / або на сторінці Releases.\n\n" +
                 "## How to play / Як грати\n\n" +
                 "1. Download `" + Program.LauncherFileName + "` (link above) / завантажте лаунчер (посилання вище).\n" +

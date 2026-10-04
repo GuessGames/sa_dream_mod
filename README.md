@@ -11,6 +11,10 @@ SA Dream Mod is my build based on [CoopAndreas](https://github.com/Tornamic/Coop
 
 ## ⬇️ [Завантажити лаунчер / Download the launcher](https://github.com/GuessGames/sa_dream_mod_coop/raw/main/SADreamLauncher.exe)
 
+## ⬇️ [Завантажити менеджер розробника / Download the developer manager](https://github.com/GuessGames/sa_dream_mod_coop/raw/main/dev/CoopAndreasManager.exe)
+
+Менеджер — для розробки й тестів: тест у два вікна, логи, сервер, збірка й публікація. Для збірки з коду потрібні цей репозиторій, VS 2022 Build Tools і xmake — див. [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+
 ---
 
 ## 🎮 Як грати / How to play
