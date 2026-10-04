@@ -34,6 +34,7 @@ tools\manager\build.cmd
   3. комітить і пушить.
 
   Перед публікацією коміт коду має бути запушений.
+- **Сервер:** панель сервера (та сама, що в лаунчері гравця) — запуск/зупинка, гравці онлайн, адреси для друзів, лог. Сервер запускається окремим процесом і працює після закриття менеджера. Окремо: `CoopAndreasManager.exe --server` (ярлик «SA Dream Mod - Server»).
 - **Запуск:** серійний ключ, звичайна гра, локальний сервер, **тест у два вікна** (сервер + 2 клієнти з `-profile 1/2` і `-autoconnect`).
 - **Логи:** `server.log`, `client.log`, `client_1.log`, `client_2.log` у `<гра>\CoopAndreas\logs`, з фільтром і живим оновленням.
 - CLI: `CoopAndreasManager.exe --status | --install | --repair | --uninstall | --verify | --update | --assemble <dir> | --publish | --test | --stop` (лог: `%LOCALAPPDATA%\CoopAndreasManager\manager_cli.log`).

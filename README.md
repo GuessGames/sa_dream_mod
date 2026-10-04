@@ -27,8 +27,13 @@ SA Dream Mod is my build based on [CoopAndreas](https://github.com/Tornamic/Coop
 
 **English:** download the launcher with the link above (if SmartScreen warns, choose *More info → Run anyway*), run it, press **Install**, enter your nickname, the server IP and the beta key, press **PLAY**. The game must be GTA San Andreas with `gta_sa.exe` **1.0 US** (the launcher asks for it if your version differs).
 
+### 🖥 Свій сервер / Hosting a server
+У лаунчері натисніть **«Сервер»** → **«Запустити сервер»**. Панель показує, чи працює сервер, хто з гравців онлайн, лог і **адреси, які треба дати друзям** (Radmin VPN / ZeroTier / локальна мережа / інтернет) з кнопкою «Копіювати IP». Сервер працює й після закриття лаунчера — зупиняється в тій самій панелі.
+
+In the launcher press **Server** → **Start server**: the panel shows the status, players online, the log and the addresses to give your friends.
+
 ### 🌐 Гра через інтернет / Playing over the internet
-Сервер (`server.exe`, порт **6767 UDP**) запускає один із гравців. Іншим потрібна його адреса: або відкрийте порт 6767 UDP на роутері, або використайте віртуальну мережу на кшталт Radmin VPN / ZeroTier.
+Найпростіше — віртуальна мережа на кшталт **Radmin VPN** або **ZeroTier**: усі заходять в одну мережу, друзі вводять IP хоста з неї. Інакше відкрийте порт **6767 UDP** на роутері хоста.
 
 ---
 

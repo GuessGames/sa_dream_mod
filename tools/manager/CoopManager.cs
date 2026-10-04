@@ -146,6 +146,24 @@ namespace CoopManager
             {"pRepair", new[]{"Виправити", "Repair"}},
             {"pWorking", new[]{"Зачекайте…", "Please wait…"}},
             {"pReady", new[]{"Готово", "Ready"}},
+            {"svTitle", new[]{"Сервер", "Server"}},
+            {"svSubtitle", new[]{"Запустіть сервер, щоб друзі могли підключитися до вас", "Start the server so your friends can join you"}},
+            {"svRunning", new[]{"● Сервер працює", "● Server is running"}},
+            {"svStopped", new[]{"● Сервер зупинено", "● Server is stopped"}},
+            {"svNotInstalled", new[]{"Сервер ще не встановлено — спочатку встановіть мод.", "The server is not installed yet — install the mod first."}},
+            {"svStart", new[]{"Запустити сервер", "Start server"}},
+            {"svStop", new[]{"Зупинити", "Stop"}},
+            {"svPort", new[]{"Порт (UDP):", "Port (UDP):"}},
+            {"svAddresses", new[]{"Адреси для друзів", "Addresses for your friends"}},
+            {"svCopy", new[]{"Копіювати IP", "Copy IP"}},
+            {"svCopied", new[]{"IP скопійовано: {0}", "IP copied: {0}"}},
+            {"svUseLocal", new[]{"Я теж граю тут (IP 127.0.0.1)", "I play here too (IP 127.0.0.1)"}},
+            {"svPlayers", new[]{"Гравці онлайн: {0}", "Players online: {0}"}},
+            {"svLog", new[]{"Лог сервера", "Server log"}},
+            {"svInternet", new[]{"Інтернет, порт {0} UDP", "Internet, port {0} UDP"}},
+            {"svLan", new[]{"Локальна мережа", "Local network"}},
+            {"svOpenPanel", new[]{"Панель сервера", "Server panel"}},
+            {"svPaused", new[]{" (пауза)", " (paused)"}},
             {"noExe", new[]{"Потрібен gta_sa.exe версії 1.0 US: вкажіть архів або теку з ним на вкладці «Налаштування».", "gta_sa.exe 1.0 US is required: set the archive or folder containing it on the Settings tab."}},
         };
         public static string T(string key)
@@ -892,6 +910,26 @@ namespace CoopManager
             });
         }
 
+        public static Process FindServerProcess(Installer inst)
+        {
+            string exe = Path.Combine(inst.ServerDir, "server.exe");
+            foreach (var pr in Process.GetProcessesByName("server"))
+            {
+                try { if (string.Equals(pr.MainModule.FileName, exe, StringComparison.OrdinalIgnoreCase)) return pr; } catch { }
+            }
+            return null;
+        }
+
+        // server.exe reads its port from server-config.ini next to it
+        public static void WriteServerPort(Installer inst, int port)
+        {
+            Directory.CreateDirectory(inst.ServerDir);
+            string cfg = Path.Combine(inst.ServerDir, "server-config.ini");
+            var lines = File.Exists(cfg) ? File.ReadAllLines(cfg).Where(l => !l.TrimStart().StartsWith("port")).ToList() : new List<string> { "maxplayers = 8" };
+            lines.Insert(0, "port = " + port);
+            File.WriteAllLines(cfg, lines);
+        }
+
         public static void StopServers(Installer inst)
         {
             string exe = Path.Combine(inst.ServerDir, "server.exe");
@@ -1016,9 +1054,6 @@ namespace CoopManager
         Installer installer;
         readonly Dictionary<Control, string> texts = new Dictionary<Control, string>();
         volatile bool busy;
-        Process serverProcess;
-        StreamWriter serverLog;
-        readonly object serverLogLock = new object();
 
         TabControl tabs;
         TextBox tbGame, tbSrc, tbZip, tbRelRepo, tbRelDir, tbNick, tbIp, tbPort, tbNick1, tbNick2, tbSerial, tbFilter, tbOutput, tbLog;
@@ -1066,7 +1101,7 @@ namespace CoopManager
             logTimer = new System.Windows.Forms.Timer { Interval = 500 };
             logTimer.Tick += delegate { PollLog(); };
             logTimer.Start();
-            FormClosing += delegate { StopServer(); };
+            // the server keeps running after the manager is closed (stop it in the server panel)
             BackColor = Theme.Back;
             Theme.Apply(this);
             Shown += delegate { if (settings.PlayerMode) RunBusy(() => CheckUpdates()); };
@@ -1324,6 +1359,12 @@ namespace CoopManager
             lbServer = Lbl(gsv, null, 12, 26, 400);
             Btn(gsv, "startServer", 12, 60, 190, delegate { StartServer(); });
             Btn(gsv, "stopServer", 212, 60, 190, delegate { StopServer(); });
+            Btn(gsv, "svOpenPanel", 12, 100, 390, delegate
+            {
+                using (var panel = new ServerPanel(settings, installer, ip => { tbIp.Text = ip; SaveLaunchFields(); }))
+                    panel.ShowDialog(this);
+                UpdateServerLabel();
+            });
 
             var gt = Group(p, "test", 8, 300, 860, 170);
             Lbl(gt, "nick1", 12, 26, 120); tbNick1 = new TextBox { Location = new Point(135, 26), Width = 160, Text = settings.Nick1 }; gt.Controls.Add(tbNick1);
@@ -1363,56 +1404,34 @@ namespace CoopManager
             catch (Exception ex) { MessageBox.Show(L.F("failed", ex.Message)); return false; }
         }
 
-        bool ServerRunning { get { return serverProcess != null && !serverProcess.HasExited; } }
+        bool ServerRunning { get { return GameLauncher.FindServerProcess(installer) != null; } }
 
         void UpdateServerLabel()
         {
             if (lbServer == null) return;
-            lbServer.Text = ServerRunning ? L.F("serverRunning", serverProcess.Id) : L.T("serverStopped");
-            lbServer.ForeColor = ServerRunning ? Color.DarkGreen : Color.DimGray;
+            var pr = GameLauncher.FindServerProcess(installer);
+            lbServer.Text = pr != null ? L.F("serverRunning", pr.Id) : L.T("serverStopped");
+            lbServer.ForeColor = pr != null ? Theme.Ok : Theme.Muted;
         }
 
+        // detached like in the player launcher: it survives closing the manager and writes server.log itself
         bool StartServer()
         {
             if (ServerRunning) return true;
-            string exe = Path.Combine(installer.ServerDir, "server.exe");
-            if (!File.Exists(exe)) { MessageBox.Show(L.T("needInstall")); return false; }
-            // a server started outside of the manager would block the port
-            foreach (var pr in Process.GetProcessesByName("server"))
+            try
             {
-                try { if (string.Equals(pr.MainModule.FileName, exe, StringComparison.OrdinalIgnoreCase)) pr.Kill(); } catch { }
+                GameLauncher.WriteServerPort(installer, settings.Port);
+                GameLauncher.StartDetachedServer(installer);
+                Log("server started, log: " + Path.Combine(installer.LogsDir, "server.log"));
             }
-            Directory.CreateDirectory(installer.LogsDir);
-            string logPath = Path.Combine(installer.LogsDir, "server.log");
-            if (File.Exists(logPath)) File.Copy(logPath, Path.Combine(installer.LogsDir, "server.old.log"), true);
-            serverLog = new StreamWriter(new FileStream(logPath, FileMode.Create, FileAccess.Write, FileShare.ReadWrite), new UTF8Encoding(false)) { AutoFlush = true };
-
-            var psi = new ProcessStartInfo(exe, "--no-colors")
-            {
-                WorkingDirectory = installer.ServerDir, UseShellExecute = false, CreateNoWindow = true,
-                RedirectStandardOutput = true, RedirectStandardError = true,
-            };
-            serverProcess = new Process { StartInfo = psi, EnableRaisingEvents = true };
-            DataReceivedEventHandler h = (o, e) =>
-            {
-                if (e.Data == null) return;
-                lock (serverLogLock) { if (serverLog != null) serverLog.WriteLine(StripAnsi(e.Data)); }
-            };
-            serverProcess.OutputDataReceived += h;
-            serverProcess.ErrorDataReceived += h;
-            serverProcess.Exited += delegate { BeginInvoke(new Action(UpdateServerLabel)); };
-            serverProcess.Start();
-            serverProcess.BeginOutputReadLine();
-            serverProcess.BeginErrorReadLine();
-            Log("server started, log: " + logPath);
+            catch (Exception ex) { MessageBox.Show(L.F("failed", ex.Message)); return false; }
             UpdateServerLabel();
             return true;
         }
 
         void StopServer()
         {
-            try { if (ServerRunning) serverProcess.Kill(); } catch { }
-            lock (serverLogLock) { if (serverLog != null) { serverLog.Dispose(); serverLog = null; } }
+            GameLauncher.StopServers(installer);
             UpdateServerLabel();
         }
 
@@ -1627,6 +1646,260 @@ namespace CoopManager
         }
     }
 
+    // ------------------------------------------------------------------ server panel (both editions)
+    // The server runs detached (cmd → server.log), so it keeps running when the launcher is closed;
+    // the panel just tails the log and re-attaches to a running server.
+    class ServerPanel : Form
+    {
+        readonly Settings settings;
+        readonly Installer installer;
+        readonly Action<string> useLocalIp;
+        Label lbState, lbPortCap, lbAddrCap, lbPlayersCap, lbLogCap, lbInfo;
+        Button btnStart, btnStop, btnCopy, btnUseLocal;
+        TextBox tbPort, tbLog;
+        ListBox lbAddresses, lbPlayers;
+        System.Windows.Forms.Timer timer;
+        long logPos;
+        readonly List<string> players = new List<string>();
+        readonly HashSet<string> paused = new HashSet<string>();
+        string publicIp;
+
+        public ServerPanel(Settings s, Installer inst, Action<string> onUseLocalIp)
+        {
+            settings = s;
+            installer = inst;
+            useLocalIp = onUseLocalIp;
+            Text = L.T("svTitle") + " — SA Dream Mod";
+            Font = Theme.Base();
+            BackColor = Theme.Back;
+            FormBorderStyle = FormBorderStyle.FixedSingle;
+            MaximizeBox = false;
+            StartPosition = FormStartPosition.CenterParent;
+            ClientSize = new Size(620, 680);
+            try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
+            Theme.HeaderPanel(this, L.T("svTitle"), L.T("svSubtitle"), 72);
+
+            int x = 18, w = ClientSize.Width - 36;
+            var top = Card(x, 88, w, 96);
+            lbState = new Label { Location = new Point(14, 12), Size = new Size(300, 26), Font = Theme.Semi(13f) };
+            top.Controls.Add(lbState);
+            lbPortCap = new Label { Location = new Point(14, 56), Size = new Size(90, 24), ForeColor = Theme.Muted, Text = L.T("svPort") };
+            top.Controls.Add(lbPortCap);
+            tbPort = new TextBox { Location = new Point(104, 53), Width = 70, Text = settings.Port.ToString(), Font = Theme.Base(10.5f), BorderStyle = BorderStyle.FixedSingle };
+            top.Controls.Add(tbPort);
+            btnStart = new Button { Location = new Point(w - 330, 22), Size = new Size(316, 48), Tag = "play", Font = Theme.Semi(11.5f), Text = L.T("svStart") };
+            btnStart.Click += delegate { StartServer(); };
+            top.Controls.Add(btnStart);
+            btnStop = new Button { Location = new Point(w - 330, 22), Size = new Size(316, 48), Tag = "danger", Font = Theme.Semi(11.5f), Text = L.T("svStop") };
+            btnStop.Click += delegate { GameLauncher.StopServers(installer); RefreshState(); };
+            top.Controls.Add(btnStop);
+
+            var mid = Card(x, 196, w, 196);
+            lbAddrCap = new Label { Location = new Point(14, 10), AutoSize = true, Font = Theme.Semi(11f), Text = L.T("svAddresses") };
+            mid.Controls.Add(lbAddrCap);
+            lbAddresses = new ListBox { Location = new Point(14, 38), Size = new Size(w - 200, 110), Font = Theme.Base(10f), BorderStyle = BorderStyle.FixedSingle, IntegralHeight = false };
+            mid.Controls.Add(lbAddresses);
+            btnCopy = new Button { Location = new Point(w - 176, 38), Size = new Size(162, 34), Tag = "primary", Text = L.T("svCopy") };
+            btnCopy.Click += delegate { CopySelectedIp(); };
+            mid.Controls.Add(btnCopy);
+            btnUseLocal = new Button { Location = new Point(w - 176, 80), Size = new Size(162, 50), Text = L.T("svUseLocal") };
+            btnUseLocal.Click += delegate { if (useLocalIp != null) useLocalIp("127.0.0.1"); lbInfo.Text = "127.0.0.1"; };
+            mid.Controls.Add(btnUseLocal);
+            lbInfo = new Label { Location = new Point(14, 156), Size = new Size(w - 28, 24), ForeColor = Theme.Ok };
+            mid.Controls.Add(lbInfo);
+
+            var bottom = Card(x, 404, w, 258);
+            lbPlayersCap = new Label { Location = new Point(14, 10), AutoSize = true, Font = Theme.Semi(11f) };
+            bottom.Controls.Add(lbPlayersCap);
+            lbPlayers = new ListBox { Location = new Point(14, 38), Size = new Size(180, 206), Font = Theme.Base(10f), BorderStyle = BorderStyle.FixedSingle, IntegralHeight = false };
+            bottom.Controls.Add(lbPlayers);
+            lbLogCap = new Label { Location = new Point(208, 10), AutoSize = true, Font = Theme.Semi(11f), Text = L.T("svLog") };
+            bottom.Controls.Add(lbLogCap);
+            tbLog = new TextBox
+            {
+                Location = new Point(208, 38), Size = new Size(w - 222, 206), Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical,
+                Font = new Font("Consolas", 8.75f), BackColor = Color.FromArgb(24, 24, 28), ForeColor = Color.Gainsboro, WordWrap = false,
+            };
+            bottom.Controls.Add(tbLog);
+
+            Theme.Apply(this);
+            FillAddresses();
+            ReloadLog();
+            RefreshState();
+            timer = new System.Windows.Forms.Timer { Interval = 1000 };
+            timer.Tick += delegate { TailLog(); RefreshState(); };
+            timer.Start();
+            FormClosed += delegate { timer.Stop(); };
+            new Thread(FetchPublicIp) { IsBackground = true }.Start();
+        }
+
+        Panel Card(int x, int y, int w, int h)
+        {
+            var c = new Panel { Location = new Point(x, y), Size = new Size(w, h), BackColor = Theme.Card };
+            Controls.Add(c);
+            return c;
+        }
+
+        string LogPath { get { return Path.Combine(installer.LogsDir, "server.log"); } }
+
+        void RefreshState()
+        {
+            bool installed = File.Exists(Path.Combine(installer.ServerDir, "server.exe"));
+            bool running = GameLauncher.FindServerProcess(installer) != null;
+            lbState.Text = !installed ? L.T("svNotInstalled") : running ? L.T("svRunning") : L.T("svStopped");
+            lbState.ForeColor = running ? Theme.Ok : installed ? Theme.Muted : Theme.Danger;
+            if (!installed) lbState.Font = Theme.Base(10f);
+            // only the button that makes sense right now is shown
+            btnStart.Visible = !running;
+            btnStart.Enabled = installed;
+            btnStop.Visible = running;
+            tbPort.Enabled = !running;
+            if (!running && players.Count > 0) { players.Clear(); paused.Clear(); }
+            UpdatePlayers();
+        }
+
+        void StartServer()
+        {
+            int port;
+            if (!int.TryParse(tbPort.Text.Trim(), out port) || port < 1 || port > 65535) { tbPort.Focus(); return; }
+            settings.Port = port;
+            settings.Save();
+            try
+            {
+                GameLauncher.WriteServerPort(installer, port);
+                GameLauncher.StartDetachedServer(installer);
+            }
+            catch (Exception ex) { MessageBox.Show(L.F("failed", ex.Message), Text); return; }
+            players.Clear();
+            paused.Clear();
+            logPos = 0;
+            tbLog.Clear();
+            FillAddresses();
+            Thread.Sleep(300);
+            RefreshState();
+        }
+
+        // IPv4 addresses of active adapters, VPN adapters first (that is what friends usually use)
+        void FillAddresses()
+        {
+            lbAddresses.Items.Clear();
+            var items = new List<KeyValuePair<int, string>>();
+            try
+            {
+                foreach (var ni in System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces())
+                {
+                    if (ni.OperationalStatus != System.Net.NetworkInformation.OperationalStatus.Up) continue;
+                    if (ni.NetworkInterfaceType == System.Net.NetworkInformation.NetworkInterfaceType.Loopback) continue;
+                    foreach (var ua in ni.GetIPProperties().UnicastAddresses)
+                    {
+                        if (ua.Address.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork) continue;
+                        string ip = ua.Address.ToString();
+                        if (ip.StartsWith("169.254.")) continue;
+                        string name = ni.Description + " " + ni.Name;
+                        string kind; int order;
+                        if (name.IndexOf("Radmin", StringComparison.OrdinalIgnoreCase) >= 0) { kind = "Radmin VPN"; order = 0; }
+                        else if (name.IndexOf("ZeroTier", StringComparison.OrdinalIgnoreCase) >= 0) { kind = "ZeroTier"; order = 0; }
+                        else if (name.IndexOf("Hamachi", StringComparison.OrdinalIgnoreCase) >= 0) { kind = "Hamachi"; order = 0; }
+                        else if (name.IndexOf("Tailscale", StringComparison.OrdinalIgnoreCase) >= 0) { kind = "Tailscale"; order = 0; }
+                        else if (name.IndexOf("Virtual", StringComparison.OrdinalIgnoreCase) >= 0 || name.IndexOf("vEthernet", StringComparison.OrdinalIgnoreCase) >= 0) continue;
+                        else { kind = L.T("svLan"); order = 1; }
+                        items.Add(new KeyValuePair<int, string>(order, kind + " — " + ip));
+                    }
+                }
+            }
+            catch { }
+            foreach (var it in items.OrderBy(i => i.Key)) lbAddresses.Items.Add(it.Value);
+            if (!string.IsNullOrEmpty(publicIp)) lbAddresses.Items.Add(L.F("svInternet", settings.Port) + " — " + publicIp);
+            if (lbAddresses.Items.Count > 0) lbAddresses.SelectedIndex = 0;
+        }
+
+        void FetchPublicIp()
+        {
+            try
+            {
+                ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
+                using (var wc = new WebClient())
+                {
+                    string ip = wc.DownloadString("https://api.ipify.org").Trim();
+                    if (Regex.IsMatch(ip, @"^\d+\.\d+\.\d+\.\d+$"))
+                    {
+                        publicIp = ip;
+                        BeginInvoke(new Action(FillAddresses));
+                    }
+                }
+            }
+            catch { }
+        }
+
+        void CopySelectedIp()
+        {
+            var item = lbAddresses.SelectedItem as string;
+            if (item == null) return;
+            string ip = item.Substring(item.LastIndexOf(' ') + 1);
+            try { Clipboard.SetText(ip); lbInfo.Text = L.F("svCopied", ip); } catch { }
+        }
+
+        void ReloadLog()
+        {
+            logPos = 0;
+            players.Clear();
+            paused.Clear();
+            tbLog.Clear();
+            if (GameLauncher.FindServerProcess(installer) != null) TailLog();
+        }
+
+        void TailLog()
+        {
+            if (!File.Exists(LogPath)) return;
+            try
+            {
+                using (var fs = new FileStream(LogPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+                {
+                    if (fs.Length < logPos) { logPos = 0; tbLog.Clear(); players.Clear(); paused.Clear(); }
+                    if (fs.Length == logPos) return;
+                    fs.Seek(logPos, SeekOrigin.Begin);
+                    string chunk = new StreamReader(fs, Encoding.UTF8).ReadToEnd();
+                    logPos = fs.Length;
+                    var lines = chunk.Replace("\r", "").Split('\n').Where(l => l.Length > 0).ToList();
+                    foreach (var line in lines) ParsePlayers(line);
+                    // keep the log box short: the entity spam is in the file, the panel shows what a host cares about
+                    var shown = lines.Where(l => l.IndexOf("] SPAWN", StringComparison.Ordinal) < 0 && l.IndexOf("] REMOVE", StringComparison.Ordinal) < 0 &&
+                                                 l.IndexOf("syncer of id", StringComparison.Ordinal) < 0 && l.IndexOf("someone else's", StringComparison.Ordinal) < 0).ToList();
+                    if (shown.Count > 0) tbLog.AppendText(string.Join(Environment.NewLine, shown) + Environment.NewLine);
+                    if (tbLog.Lines.Length > 400) tbLog.Lines = tbLog.Lines.Skip(tbLog.Lines.Length - 300).ToArray();
+                    tbLog.SelectionStart = tbLog.TextLength;
+                    tbLog.ScrollToCaret();
+                }
+            }
+            catch (IOException) { }
+        }
+
+        static readonly Regex ReJoin = new Regex(@"freeId \d+ name (.+?) version");
+        static readonly Regex ReLeave = new Regex(@"\[net\] (.+?) disconnected");
+        static readonly Regex RePause = new Regex(@"\[net\] (.+?) (opened|closed) the pause menu");
+
+        void ParsePlayers(string line)
+        {
+            var m = ReJoin.Match(line);
+            if (m.Success) { if (!players.Contains(m.Groups[1].Value)) players.Add(m.Groups[1].Value); return; }
+            m = ReLeave.Match(line);
+            if (m.Success) { players.Remove(m.Groups[1].Value); paused.Remove(m.Groups[1].Value); return; }
+            m = RePause.Match(line);
+            if (m.Success) { if (m.Groups[2].Value == "opened") paused.Add(m.Groups[1].Value); else paused.Remove(m.Groups[1].Value); }
+        }
+
+        void UpdatePlayers()
+        {
+            lbPlayersCap.Text = L.F("svPlayers", players.Count);
+            var items = players.Select(p => paused.Contains(p) ? p + L.T("svPaused") : p).ToArray();
+            if (!items.SequenceEqual(lbPlayers.Items.Cast<string>()))
+            {
+                lbPlayers.Items.Clear();
+                lbPlayers.Items.AddRange(items);
+            }
+        }
+    }
+
     // ------------------------------------------------------------------ simple launcher for players
     class PlayerForm : Form
     {
@@ -1636,7 +1909,7 @@ namespace CoopManager
         string remoteVersion;
 
         Label lbTitle, lbSub, lbFolderCap, lbFolder, lbExeCap, lbArchive, lbModState, lbUpdate, lbStatus, lbPlayerCap, lbKeyCap, lbNick, lbIp, lbPort, lbKey, lbIpHint;
-        Button btnLang, btnFolder, btnExe, btnMain, btnPlay, btnHowKey, btnLogs, btnRepair, btnUninstall;
+        Button btnLang, btnFolder, btnExe, btnMain, btnPlay, btnHowKey, btnLogs, btnRepair, btnUninstall, btnServer;
         TextBox tbNick, tbIp, tbPort, tbKey;
         Panel cardGame, cardPlayer;
         readonly List<Button> actionButtons = new List<Button>();
@@ -1718,6 +1991,13 @@ namespace CoopManager
             btnLogs.Click += delegate { Directory.CreateDirectory(installer.LogsDir); Process.Start("explorer.exe", installer.LogsDir); };
             btnRepair = SmallButton(this, x + 128, 630, 120);
             btnRepair.Click += delegate { if (EnsureWritable()) RunBusy(() => installer.Repair()); };
+            btnServer = SmallButton(this, x + 256, 630, 120);
+            btnServer.Click += delegate
+            {
+                SaveFields();
+                using (var panel = new ServerPanel(settings, installer, ip => { tbIp.Text = ip; SaveFields(); }))
+                    panel.ShowDialog(this);
+            };
             btnUninstall = SmallButton(this, x + w - 150, 630, 150);
             btnUninstall.Tag = "danger";
             btnUninstall.Click += delegate
@@ -1785,6 +2065,7 @@ namespace CoopManager
             btnPlay.Text = L.T("pPlay");
             btnLogs.Text = L.T("pLogs");
             btnRepair.Text = L.T("pRepair");
+            btnServer.Text = L.T("svTitle");
             btnUninstall.Text = L.T("uninstall");
         }
 
@@ -2059,6 +2340,16 @@ namespace CoopManager
         {
             // leftover from a self-update
             try { File.Delete(Application.ExecutablePath + ".old"); } catch { }
+            if (args.Length > 0 && args[0] == "--server")
+            {
+                // standalone server panel (desktop shortcut "SA Dream Mod — Server")
+                Application.EnableVisualStyles();
+                Application.SetCompatibleTextRenderingDefault(false);
+                var ss = Settings.Load();
+                L.Uk = ss.Ukrainian;
+                Application.Run(new ServerPanel(ss, new Installer(ss, line => { }), null));
+                return 0;
+            }
             if (args.Length > 0) return RunCli(args);
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
