@@ -128,7 +128,7 @@ namespace CoopManager
         public int Port = 6767;
         public string Nick1 = "Tester1";
         public string Nick2 = "Tester2";
-        public string RepoUrl = "";
+        public string RepoUrl = "https://github.com/GuessGames/sa_dream_mod.git";
         public string Branch = "main";
         public bool InstallFromDist = true;
 

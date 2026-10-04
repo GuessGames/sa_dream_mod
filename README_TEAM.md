@@ -5,7 +5,7 @@
 
 ## Для гравця
 1. Встановіть [Git for Windows](https://git-scm.com/download/win) (потрібен для оновлень).
-2. Склонуйте цей репозиторій (наприклад, у `D:\CoopAndreasDev\src`) і запустіть `dist\CoopAndreasManager.exe`.
+2. Склонуйте цей репозиторій (git clone https://github.com/GuessGames/sa_dream_mod.git) (наприклад, у `D:\CoopAndreasDev\src`) і запустіть `dist\CoopAndreasManager.exe`.
 3. На вкладці **Шляхи** вкажіть теку гри і архів `additional.zip` (у ньому є `gta_sa.exe` 1.0 US, у git його немає).
 4. **Встановлення → Встановити / оновити файли.** Якщо тека гри захищена, менеджер попросить права адміністратора.
 5. **Запуск:** серійний ключ (`/gen <ID>` у Discord CoopAndreas), нік, IP, кнопка «Запустити гру».
