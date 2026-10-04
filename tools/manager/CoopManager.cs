@@ -1987,18 +1987,19 @@ namespace CoopManager
             // --- footer
             lbStatus = new Label { Location = new Point(x, 604), Size = new Size(w, 22), ForeColor = Theme.Muted, AutoEllipsis = true };
             Controls.Add(lbStatus);
-            btnLogs = SmallButton(this, x, 630, 120);
+            btnLogs = SmallButton(this, x, 630, 110);
             btnLogs.Click += delegate { Directory.CreateDirectory(installer.LogsDir); Process.Start("explorer.exe", installer.LogsDir); };
-            btnRepair = SmallButton(this, x + 128, 630, 120);
+            btnRepair = SmallButton(this, x + 118, 630, 110);
             btnRepair.Click += delegate { if (EnsureWritable()) RunBusy(() => installer.Repair()); };
-            btnServer = SmallButton(this, x + 256, 630, 120);
+            btnServer = SmallButton(this, x + 236, 630, 120);
+            btnServer.Tag = "primary";
             btnServer.Click += delegate
             {
                 SaveFields();
                 using (var panel = new ServerPanel(settings, installer, ip => { tbIp.Text = ip; SaveFields(); }))
                     panel.ShowDialog(this);
             };
-            btnUninstall = SmallButton(this, x + w - 150, 630, 150);
+            btnUninstall = SmallButton(this, x + w - 138, 630, 138);
             btnUninstall.Tag = "danger";
             btnUninstall.Click += delegate
             {
