@@ -397,8 +397,18 @@ static void CCarCtrl__UpdateCarOnRails_Hook(CVehicle* pVehicle)
     CCarCtrl::UpdateCarOnRails(pVehicle);
 }
 
+// CAEVehicleAudioEntity::Service treats any CPlayerPed driver as "the player drives this car" and turns the
+// radio on; remote players are CPlayerPeds too, so their cars played the radio for everyone. Only the local
+// player counts as the driver here: in another player's car you are a passenger and hear the driver's station.
+static bool __fastcall CAEVehicleAudioEntity__IsDriverPlayer_Hook(CPed* This)
+{
+    return This == FindPlayerPed(0);
+}
+
 void VehicleHooks::InjectHooks()
 {
+    patch::RedirectCall(0x502302, CAEVehicleAudioEntity__IsDriverPlayer_Hook);
+
     patch::RedirectCall(0x53C1CB, CCarCtrl__RemoveDistantCars_Hook);
 
     patch::RedirectCall(0x46DCE4, CDamageManager__ApplyDamage_Hook);
