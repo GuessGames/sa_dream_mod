@@ -114,6 +114,9 @@ void CNetwork::HandlePlayerDisconnected(ENetEvent& event)
         Packets::Scripts::g_pLastEnExPlayerOwner = nullptr;
     }
 
+    logger::info("[net] %s disconnected, removing their hosted entities (peds=%d vehicles=%d before)",
+        pNetworkPlayer->GetName().c_str(), (int)CNetworkPedManager::m_pPeds.size(),
+        (int)CNetworkVehicleManager::m_pVehicles.size());
     CNetworkPedManager::RemoveAllHostedAndNotify(pNetworkPlayer);
     CNetworkVehicleManager::RemoveAllHostedAndNotify(pNetworkPlayer);
 

@@ -11,6 +11,13 @@ PACKET_HANDLER(ePacketType::PED_SPAWN, Packets::Peds::PedSpawn* pPedSpawn)
         packet->pos.y, packet->pos.z, packet->pedType, packet->createdBy);
 #endif
 
+    if (CNetworkPedManager::GetPed(pPedSpawn->pedid))
+    {
+        logger::warn("[ped] SPAWN id=%d already exists locally (stale id reuse / reordered packets)", pPedSpawn->pedid);
+    }
+    logger::info("[ped] SPAWN id=%d model=%d type=%d pos=(%.1f %.1f %.1f) createdBy=%d", pPedSpawn->pedid,
+        pPedSpawn->modelId, pPedSpawn->pedType, pPedSpawn->pos.x, pPedSpawn->pos.y, pPedSpawn->pos.z, pPedSpawn->createdBy);
+
     CNetworkPed* pNetworkPed = new CNetworkPed(pPedSpawn->pedid, pPedSpawn->modelId, pPedSpawn->pedType, pPedSpawn->pos,
         pPedSpawn->createdBy, pPedSpawn->specialModelName);
 
@@ -28,6 +35,15 @@ PACKET_HANDLER(ePacketType::PED_CONFIRM, Packets::Peds::PedConfirm* pPedConfirm)
         CNetworkPed* pTempPed = CNetworkPedManager::m_apTempPeds[pPedConfirm->tempid];
         if (pTempPed)
         {
+            if (!IsPedPointerValid(pTempPed->m_pPed))
+            {
+                logger::warn("[ped] CONFIRM temp=%d id=%d but the local ped is already gone (removed before confirm)",
+                    pPedConfirm->tempid, pPedConfirm->pedid);
+            }
+            else
+            {
+                logger::info("[ped] CONFIRM temp=%d -> id=%d", pPedConfirm->tempid, pPedConfirm->pedid);
+            }
             pTempPed->m_nPedId = pPedConfirm->pedid;
             CNetworkPedManager::Add(pTempPed);
             CNetworkPedManager::m_apTempPeds[pPedConfirm->tempid] = nullptr;
@@ -42,6 +58,7 @@ PACKET_HANDLER(ePacketType::PED_REMOVE, Packets::Peds::PedRemove* pPedRemove)
 #endif
 
     CNetworkPed* pNetworkPed = CNetworkPedManager::GetPed(pPedRemove->pedid);
+    logger::info("[ped] REMOVE id=%d%s", pPedRemove->pedid, pNetworkPed ? "" : " (unknown locally)");
     if (pNetworkPed)
     {
         CNetworkPedManager::Remove(pNetworkPed);
@@ -55,8 +72,13 @@ PACKET_HANDLER(ePacketType::ASSIGN_PED, Packets::Peds::AssignPedSyncer* pAssignP
 
     if (!pNetworkPed)
     {
+        logger::warn("[ped] ASSIGN id=%d ignored: ped unknown locally (ownership state may desync)",
+            pAssignPedSyncer->pedid);
         return;
     }
+
+    logger::info("[ped] ASSIGN id=%d syncing %d -> %d", pAssignPedSyncer->pedid, pNetworkPed->m_bSyncing,
+        !pNetworkPed->m_bSyncing);
 
     if (pNetworkPed->m_bSyncing)
     {

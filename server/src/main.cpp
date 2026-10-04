@@ -35,6 +35,14 @@ int main(int argc, char* argv[])
     SetConsoleTitleW(L"CoopAndreas Server");
 #endif
 
+    // unbuffered output so the log is visible live when stdout is redirected (manager log view)
+    setvbuf(stdout, nullptr, _IONBF, 0);
+    for (int i = 1; i < argc; i++)
+    {
+        if (strcmp(argv[i], "--no-colors") == 0)
+            logger::ms_bColors = false;
+    }
+
     std::filesystem::path exeDir = GetExecutableDir();
     std::error_code ec;
     std::filesystem::current_path(exeDir, ec);

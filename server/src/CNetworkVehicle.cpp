@@ -13,6 +13,8 @@ void CNetworkVehicle::ReassignSyncer(CNetworkPlayer* newSyncer)
 {
     if (m_pSyncer != newSyncer)
     {
+        logger::info("[veh] syncer of id=%d: %s -> %s", m_nVehicleId, m_pSyncer ? m_pSyncer->GetName().c_str() : "none",
+            newSyncer->GetName().c_str());
         Packets::Vehicles::AssignVehicleSyncer packet{};
         packet.vehicleid = m_nVehicleId;
 

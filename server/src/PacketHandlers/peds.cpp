@@ -29,6 +29,14 @@ PACKET_HANDLER(ePacketType::PED_SPAWN, Packets::Peds::PedSpawn* pPedSpawn, CNetw
     }
 
     pPedSpawn->pedid = CNetworkPedManager::GetFreeId();
+    if (pPedSpawn->pedid < 0)
+    {
+        logger::warn("[ped] SPAWN from %s rejected: no free ped id", pNetworkPlayer->GetName().c_str());
+        return;
+    }
+    logger::info("[ped] SPAWN id=%d model=%d by %s pos=(%.1f %.1f %.1f) total=%d", pPedSpawn->pedid, pPedSpawn->modelId,
+        pNetworkPlayer->GetName().c_str(), pPedSpawn->pos.x, pPedSpawn->pos.y, pPedSpawn->pos.z,
+        (int)CNetworkPedManager::m_pPeds.size() + 1);
     GetPacketFactory().SendToAll(*pPedSpawn, pNetworkPlayer);
 
     CNetworkPed* pNetworkPed = new CNetworkPed(
@@ -96,6 +104,8 @@ PACKET_HANDLER(ePacketType::PED_REMOVE, Packets::Peds::PedRemove* pPedRemove, CN
             return;
         }
     }
+
+    logger::info("[ped] REMOVE id=%d by %s", pNetworkPed->m_nPedId, pNetworkPlayer->GetName().c_str());
 
     // if nobody claimed the ped, remove it from all players' claim lists
     for (auto p : CNetworkPlayerManager::m_pPlayers)

@@ -11,6 +11,14 @@ PACKET_HANDLER(ePacketType::VEHICLE_SPAWN, Packets::Vehicles::VehicleSpawn* pVeh
         pVehicleSpawn->pos.x, pVehicleSpawn->pos.y, pVehicleSpawn->pos.z, pVehicleSpawn->rot.m_angle);
 #endif
 
+    if (CNetworkVehicleManager::GetVehicle(pVehicleSpawn->vehicleid))
+    {
+        logger::warn("[veh] SPAWN id=%d already exists locally, replacing (stale id reuse / reordered packets)",
+            pVehicleSpawn->vehicleid);
+    }
+    logger::info("[veh] SPAWN id=%d model=%d pos=(%.1f %.1f %.1f) createdBy=%d", pVehicleSpawn->vehicleid,
+        pVehicleSpawn->modelid, pVehicleSpawn->pos.x, pVehicleSpawn->pos.y, pVehicleSpawn->pos.z, pVehicleSpawn->createdBy);
+
     CNetworkVehicle* pNetworkVehicle =
         new CNetworkVehicle(pVehicleSpawn->vehicleid, pVehicleSpawn->modelid, pVehicleSpawn->pos,
             pVehicleSpawn->rot.m_angle, pVehicleSpawn->color1, pVehicleSpawn->color2, pVehicleSpawn->createdBy);
@@ -23,6 +31,7 @@ PACKET_HANDLER(ePacketType::VEHICLE_REMOVE, Packets::Vehicles::VehicleRemove* pV
     CChat::AddMessage("VEHICLE REMOVE %d", pVehicleRemove->vehicleid);
 #endif
     CNetworkVehicle* pNetworkVehicle = CNetworkVehicleManager::GetVehicle(pVehicleRemove->vehicleid);
+    logger::info("[veh] REMOVE id=%d%s", pVehicleRemove->vehicleid, pNetworkVehicle ? "" : " (unknown locally)");
     if (pNetworkVehicle)
     {
         CNetworkVehicleManager::Remove(pNetworkVehicle);
@@ -41,6 +50,15 @@ PACKET_HANDLER(ePacketType::VEHICLE_CONFIRM, Packets::Vehicles::VehicleConfirm* 
         CNetworkVehicle* pTempVehicle = CNetworkVehicleManager::m_apTempVehicles[pVehicleConfirm->tempid];
         if (pTempVehicle)
         {
+            if (!IsVehiclePointerValid(pTempVehicle->m_pVehicle))
+            {
+                logger::warn("[veh] CONFIRM temp=%d id=%d but the local vehicle is already gone (removed before confirm)",
+                    pVehicleConfirm->tempid, pVehicleConfirm->vehicleid);
+            }
+            else
+            {
+                logger::info("[veh] CONFIRM temp=%d -> id=%d", pVehicleConfirm->tempid, pVehicleConfirm->vehicleid);
+            }
             pTempVehicle->m_nVehicleId = pVehicleConfirm->vehicleid;
             CNetworkVehicleManager::Add(pTempVehicle);
             CNetworkVehicleManager::m_apTempVehicles[pVehicleConfirm->tempid] = nullptr;
@@ -373,8 +391,13 @@ PACKET_HANDLER(ePacketType::ASSIGN_VEHICLE, Packets::Vehicles::AssignVehicleSync
 
     if (!pNetworkVehicle)
     {
+        logger::warn("[veh] ASSIGN id=%d ignored: vehicle unknown locally (ownership state may desync)",
+            pAssignVehicleSyncer->vehicleid);
         return;
     }
+
+    logger::info("[veh] ASSIGN id=%d syncing %d -> %d", pAssignVehicleSyncer->vehicleid, pNetworkVehicle->m_bSyncing,
+        !pNetworkVehicle->m_bSyncing);
 
     if (pNetworkVehicle->m_bSyncing)
     {

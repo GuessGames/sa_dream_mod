@@ -72,7 +72,10 @@ bool CNetworkVehicle::CreateVehicle(int vehicleid, int modelid, CVector pos, flo
     }
 
     if (!m_pVehicle)
+    {
+        logger::error("[veh] failed to create network vehicle id=%d model=%d (vehicle pool full?)", vehicleid, modelid);
         return false;
+    }
 
     m_pVehicle->SetPosn(pos);
     m_pVehicle->SetOrientation(0.0f, 0.0f, rotation);
@@ -89,6 +92,7 @@ CNetworkVehicle::~CNetworkVehicle()
 {
     if (m_bSyncing)
     {
+        logger::info("[veh] hosted vehicle id=%d removed locally, notifying others", m_nVehicleId);
         Packets::Vehicles::VehicleRemove vehicleRemovePacket{};
         vehicleRemovePacket.vehicleid = m_nVehicleId;
         GetPacketFactory().Send(vehicleRemovePacket);
@@ -139,6 +143,10 @@ CNetworkVehicle* CNetworkVehicle::CreateHosted(CVehicle* vehicle)
     vehicleSpawnPacket.color2 = vehicle->m_nSecondaryColor;
     vehicleSpawnPacket.createdBy = (eVehicleCreatedBy)vehicle->m_nCreatedBy;
     GetPacketFactory().Send(vehicleSpawnPacket);
+
+    logger::info("[veh] hosted SPAWN temp=%d model=%d pos=(%.1f %.1f %.1f) pool=%d", networkVehicle->m_nTempId,
+        vehicleSpawnPacket.modelid, vehicleSpawnPacket.pos.x, vehicleSpawnPacket.pos.y, vehicleSpawnPacket.pos.z,
+        CPools::ms_pVehiclePool->GetNoOfUsedSpaces());
 
     return networkVehicle;
 }

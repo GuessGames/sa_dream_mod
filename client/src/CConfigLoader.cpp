@@ -5,7 +5,13 @@
 
 void CConfigLoader::BuildPath()
 {
-    ms_sDataPath = std::string((const char*)0xC92368) + "\\" + CONFIG_FILE_NAME;  // 0xC92368 - gta_user_dir_path var
+    // 0xC92368 - gta_user_dir_path var; profiles > 0 get coopandreas_N.ini
+    std::string fileName = CONFIG_FILE_NAME;
+    if (CCore::ms_nProfile > 0)
+    {
+        fileName = "coopandreas" + CCore::GetProfileSuffix() + ".ini";
+    }
+    ms_sDataPath = std::string((const char*)0xC92368) + "\\" + fileName;
 }
 
 void CConfigLoader::BuildDefaultConfig()

@@ -49,6 +49,14 @@ CNetworkPed::CNetworkPed(int pedid, int modelId, ePedType pedType, CVector pos, 
         m_pPed = new CCivilianPed(pedType, modelId);
     }
 
+    if (!m_pPed)
+    {
+        logger::error("[ped] failed to create network ped id=%d model=%d (ped pool full?)", pedid, modelId);
+        m_nPedId = pedid;
+        m_bSyncing = false;
+        return;
+    }
+
     m_pPed->m_nCreatedBy = 2;
     m_pPed->m_pIntelligence->SetPedDecisionMakerType(-1);
     m_pPed->m_pIntelligence->SetSeeingRange(30.0);
@@ -73,6 +81,7 @@ CNetworkPed::~CNetworkPed()
 {
     if (m_bSyncing)
     {
+        logger::info("[ped] hosted ped id=%d removed locally, notifying others", m_nPedId);
         Packets::Peds::PedRemove packet{};
         packet.pedid = m_nPedId;
         GetPacketFactory().Send(packet);
@@ -127,6 +136,9 @@ CNetworkPed* CNetworkPed::CreateHosted(CPed* ped)
         packet.specialModelName[7] = '\0';
     }
     GetPacketFactory().Send(packet);
+
+    logger::info("[ped] hosted SPAWN temp=%d model=%d pos=(%.1f %.1f %.1f) pool=%d", networkPed->m_nTempId,
+        packet.modelId, packet.pos.x, packet.pos.y, packet.pos.z, CPools::ms_pPedPool->GetNoOfUsedSpaces());
 
     return networkPed;
 }

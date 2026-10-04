@@ -113,6 +113,17 @@ static void __cdecl CWorld__Remove_Hook(CEntity* entity)
             CNetworkVehicleManager::Remove(networkVehicle);
             delete networkVehicle;
         }
+        else if (!networkVehicle)
+        {
+            for (uint8_t i = 0; i < ARRAY_SIZE(CNetworkVehicleManager::m_apTempVehicles); i++)
+            {
+                auto pTemp = CNetworkVehicleManager::m_apTempVehicles[i];
+                if (pTemp && pTemp->m_pVehicle == vehicle)
+                {
+                    logger::warn("[veh] hosted vehicle temp=%d removed before server confirmed it", i);
+                }
+            }
+        }
     }
     else if (entity->m_nType == eEntityType::ENTITY_TYPE_PED)
     {
@@ -124,6 +135,17 @@ static void __cdecl CWorld__Remove_Hook(CEntity* entity)
             {
                 CNetworkPedManager::Remove(networkPed);
                 delete networkPed;
+            }
+            else if (!networkPed)
+            {
+                for (uint8_t i = 0; i < ARRAY_SIZE(CNetworkPedManager::m_apTempPeds); i++)
+                {
+                    auto pTemp = CNetworkPedManager::m_apTempPeds[i];
+                    if (pTemp && pTemp->m_pPed == ped)
+                    {
+                        logger::warn("[ped] hosted ped temp=%d removed before server confirmed it", i);
+                    }
+                }
             }
         }
     }

@@ -7,6 +7,14 @@ PACKET_HANDLER(
     ePacketType::VEHICLE_SPAWN, Packets::Vehicles::VehicleSpawn* pVehicleSpawn, CNetworkPlayer* pNetworkPlayer)
 {
     pVehicleSpawn->vehicleid = CNetworkVehicleManager::GetFreeID();
+    if (pVehicleSpawn->vehicleid < 0)
+    {
+        logger::warn("[veh] SPAWN from %s rejected: no free vehicle id", pNetworkPlayer->GetName().c_str());
+        return;
+    }
+    logger::info("[veh] SPAWN id=%d model=%d by %s pos=(%.1f %.1f %.1f) total=%d", pVehicleSpawn->vehicleid,
+        pVehicleSpawn->modelid, pNetworkPlayer->GetName().c_str(), pVehicleSpawn->pos.x, pVehicleSpawn->pos.y,
+        pVehicleSpawn->pos.z, (int)CNetworkVehicleManager::m_pVehicles.size() + 1);
     GetPacketFactory().SendToAll(*pVehicleSpawn, pNetworkPlayer);
 
     // send it back to the syncer of the vehicle so that he knows the id
@@ -33,6 +41,7 @@ PACKET_HANDLER(
     {
         if (vehicle->m_pSyncer == pNetworkPlayer)
         {
+            logger::info("[veh] REMOVE id=%d by %s", vehicle->m_nVehicleId, pNetworkPlayer->GetName().c_str());
             GetPacketFactory().SendToAll(*pVehicleRemove, pNetworkPlayer);
 
             CNetworkVehicleManager::Remove(vehicle);

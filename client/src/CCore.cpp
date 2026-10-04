@@ -61,10 +61,18 @@ void CCore::Init()
         ms_nRunIndex = 1;
     }
 
+    // -profile N: separate config (nickname/ip) and log file, needed to run 2 instances on one PC
+    if (const char* profileArg = strstr(cmd, "-profile "))
+    {
+        ms_nProfile = std::clamp(atoi(profileArg + 9), 0, 9);
+    }
+
     gvm.Detect();
-#ifdef _DEV
-    CCore::AllocateConsole();
-#endif
+    // log to CoopAndreas\logs\client[_N].log (read by the manager); -console shows a console window instead
+    if (strstr(cmd, "-console") != nullptr)
+        CCore::AllocateConsole();
+    else
+        CCore::RedirectOutputToLogFile();
     CImGui::Init();
     CLaunchManager::CollectCommandLineArgs();
     WinMain_AfterWindowInit_ptr = injector::GetBranchDestination(0x748995).as_int();
@@ -95,6 +103,28 @@ void CCore::Init()
         CNetwork::Disconnect();
     };
     semver_parse(COOPANDREAS_VERSION, &CCore::Version);
+}
+
+std::string CCore::GetProfileSuffix()
+{
+    return ms_nProfile > 0 ? "_" + std::to_string(ms_nProfile) : "";
+}
+
+void CCore::RedirectOutputToLogFile()
+{
+    CreateDirectoryA("CoopAndreas", nullptr);
+    CreateDirectoryA("CoopAndreas\\logs", nullptr);
+
+    std::string path = "CoopAndreas\\logs\\client" + GetProfileSuffix() + ".log";
+    std::string oldPath = "CoopAndreas\\logs\\client" + GetProfileSuffix() + ".old.log";
+    MoveFileExA(path.c_str(), oldPath.c_str(), MOVEFILE_REPLACE_EXISTING);
+
+    if (freopen(path.c_str(), "w", stdout))
+    {
+        setvbuf(stdout, nullptr, _IONBF, 0);
+        logger::ms_bColors = false;
+        logger::info("CoopAndreas %s client log, profile %d", COOPANDREAS_VERSION, ms_nProfile);
+    }
 }
 
 void CCore::AllocateConsole()
