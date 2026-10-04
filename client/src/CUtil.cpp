@@ -329,6 +329,16 @@ void CUtil::RebuildRemotePlayer(CPlayerPed* ped)
 {
     uint8_t localPreviousClothes[0x78];
     memcpy(localPreviousClothes, reinterpret_cast<void*>(0xBC1C78), sizeof(localPreviousClothes));
+
+    // the walk style (fat/muscular/normal) is picked from the stats while dressing: use his, not ours
+    CPedClothesDesc* desc = ped->m_pPlayerData->m_pPedClothesDesc;
+    float localFat = CStats::StatTypesFloat[STAT_FAT], localMuscle = CStats::StatTypesFloat[STAT_MUSCLE];
+    CStats::StatTypesFloat[STAT_FAT] = desc->m_fFatStat;
+    CStats::StatTypesFloat[STAT_MUSCLE] = desc->m_fMuscleStat;
+
     CClothes::RebuildPlayer(ped, true);
+
+    CStats::StatTypesFloat[STAT_FAT] = localFat;
+    CStats::StatTypesFloat[STAT_MUSCLE] = localMuscle;
     memcpy(reinterpret_cast<void*>(0xBC1C78), localPreviousClothes, sizeof(localPreviousClothes));
 }
