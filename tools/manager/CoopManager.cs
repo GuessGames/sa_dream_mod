@@ -99,7 +99,7 @@ namespace CoopManager
             {"nick2", new[]{"Нік вікна 2:", "Window 2 nick:"}},
             {"launchTest", new[]{"Сервер + 2 вікна гри", "Server + 2 game windows"}},
             {"killGames", new[]{"Закрити всі вікна гри", "Close all game windows"}},
-            {"testHint", new[]{"Вікна ставляться поруч. У грі виберіть «Start Game» → підключення до 127.0.0.1 (нік і IP вже прописані). Роздільність 800×600.", "Windows are placed side by side. In game choose \"Start Game\" → connect to 127.0.0.1 (nick and IP are pre-filled). Resolution 800×600."}},
+            {"testHint", new[]{"Вікна ставляться поруч і самі підключаються до 127.0.0.1 (нік і IP вже прописані). Роздільність у грі — 800×600.", "Windows are placed side by side and connect to 127.0.0.1 automatically (nick and IP are pre-filled). In-game resolution 800×600."}},
             {"logFile", new[]{"Файл:", "File:"}},
             {"filter", new[]{"Фільтр:", "Filter:"}},
             {"onlyWarn", new[]{"Тільки попередження/помилки", "Warnings/errors only"}},
@@ -130,7 +130,7 @@ namespace CoopManager
         public string GameDir = @"C:\Program Files (x86)\Rockstar Games\GTA San Andreas";
         public string SourceDir = "";
         public string AdditionalZip = "";
-        public string ReleaseRepo = "GuessGames/sa_dream_mod_release";
+        public string ReleaseRepo = "GuessGames/sa_dream_mod_coop";
         public string ReleaseDir = "";
         public bool Ukrainian = true;
         public bool PlayerMode = true;
@@ -732,6 +732,65 @@ namespace CoopManager
         public static extern bool WritePrivateProfileString(string section, string key, string value, string file);
     }
 
+    // ------------------------------------------------------------------ game / server launching shared by GUI and CLI
+    static class GameLauncher
+    {
+        // writes nickname/ip/port into the client config of the given profile
+        public static void WriteClientConfig(Settings s, int profile, string nick, string ip)
+        {
+            string userDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "GTA San Andreas User Files");
+            Directory.CreateDirectory(userDir);
+            string file = Path.Combine(userDir, profile > 0 ? "coopandreas_" + profile + ".ini" : "coopandreas.ini");
+            Native.WritePrivateProfileString("config", "nickname", nick, file);
+            Native.WritePrivateProfileString("config", "ip", ip, file);
+            Native.WritePrivateProfileString("config", "port", s.Port.ToString(), file);
+        }
+
+        // profile 0 = normal play; windowIndex 0/1 = side-by-side placement, -1 = none; returns the logged command line
+        public static string Launch(Settings s, int profile, string nick, string ip, int windowIndex, bool autoConnect)
+        {
+            string serial = Serial.GetSerial();
+            if (string.IsNullOrEmpty(serial)) throw new Exception(L.T("needSerial"));
+            WriteClientConfig(s, profile, nick, ip);
+
+            string args = "--coop -id " + Serial.GetPcId() + " -serial " + serial;
+            if (profile > 0) args += " -profile " + profile;
+            if (windowIndex >= 0) args += " --coopd" + windowIndex;
+            if (autoConnect) args += " -autoconnect";
+            Process.Start(new ProcessStartInfo(Path.Combine(s.GameDir, "gta_sa.exe"), args) { WorkingDirectory = s.GameDir, UseShellExecute = false });
+            return "gta_sa.exe " + args.Replace(serial, "***");
+        }
+
+        // server writing straight into CoopAndreas\logs\server.log, independent of the manager process
+        public static void StartDetachedServer(Installer inst)
+        {
+            string exe = Path.Combine(inst.ServerDir, "server.exe");
+            if (!File.Exists(exe)) throw new Exception(L.T("needInstall"));
+            StopServers(inst);
+            Directory.CreateDirectory(inst.LogsDir);
+            string log = Path.Combine(inst.LogsDir, "server.log");
+            if (File.Exists(log)) File.Copy(log, Path.Combine(inst.LogsDir, "server.old.log"), true);
+            Process.Start(new ProcessStartInfo("cmd.exe", "/c \"\"" + exe + "\" --no-colors > \"" + log + "\" 2>&1\"")
+            {
+                WorkingDirectory = inst.ServerDir, UseShellExecute = false, CreateNoWindow = true,
+            });
+        }
+
+        public static void StopServers(Installer inst)
+        {
+            string exe = Path.Combine(inst.ServerDir, "server.exe");
+            foreach (var pr in Process.GetProcessesByName("server"))
+            {
+                try { if (string.Equals(pr.MainModule.FileName, exe, StringComparison.OrdinalIgnoreCase)) { pr.Kill(); pr.WaitForExit(3000); } } catch { }
+            }
+        }
+
+        public static void StopGames()
+        {
+            foreach (var pr in Process.GetProcessesByName("gta_sa")) { try { pr.Kill(); } catch { } }
+        }
+    }
+
     // ------------------------------------------------------------------ developer operations shared by GUI and CLI
     class DevOps
     {
@@ -1100,9 +1159,9 @@ namespace CoopManager
             {
                 SaveLaunchFields();
                 if (!StartServer()) return;
-                if (!LaunchGame(1, settings.Nick1, "127.0.0.1", 0)) return;
+                if (!LaunchGame(1, settings.Nick1, "127.0.0.1", 0, true)) return;
                 Thread.Sleep(1500);
-                LaunchGame(2, settings.Nick2, "127.0.0.1", 1);
+                LaunchGame(2, settings.Nick2, "127.0.0.1", 1, true);
             });
             Btn(gt, "killGames", 302, 64, 240, delegate
             {
@@ -1122,30 +1181,12 @@ namespace CoopManager
             settings.Save();
         }
 
-        // writes nickname/ip/port into the client config of the given profile
-        void WriteClientConfig(int profile, string nick, string ip)
-        {
-            string userDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "GTA San Andreas User Files");
-            Directory.CreateDirectory(userDir);
-            string file = Path.Combine(userDir, profile > 0 ? "coopandreas_" + profile + ".ini" : "coopandreas.ini");
-            Native.WritePrivateProfileString("config", "nickname", nick, file);
-            Native.WritePrivateProfileString("config", "ip", ip, file);
-            Native.WritePrivateProfileString("config", "port", settings.Port.ToString(), file);
-        }
-
         // profile 0 = normal play; windowIndex 0/1 = side-by-side debug placement, -1 = none
-        bool LaunchGame(int profile, string nick, string ip, int windowIndex)
+        bool LaunchGame(int profile, string nick, string ip, int windowIndex, bool autoConnect = false)
         {
             if (!installer.IsInstalled) { MessageBox.Show(L.T("needInstall")); return false; }
-            string serial = Serial.GetSerial();
-            if (string.IsNullOrEmpty(serial)) { tabs.SelectedIndex = 1; MessageBox.Show(L.T("needSerial")); return false; }
-            WriteClientConfig(profile, nick, ip);
-
-            string args = "--coop -id " + Serial.GetPcId() + " -serial " + serial;
-            if (profile > 0) args += " -profile " + profile;
-            if (windowIndex >= 0) args += " --coopd" + windowIndex;
-            var psi = new ProcessStartInfo(Path.Combine(settings.GameDir, "gta_sa.exe"), args) { WorkingDirectory = settings.GameDir, UseShellExecute = false };
-            try { Process.Start(psi); Log("launch: gta_sa.exe " + args.Replace(serial, "***")); return true; }
+            if (string.IsNullOrEmpty(Serial.GetSerial())) { tabs.SelectedIndex = 1; MessageBox.Show(L.T("needSerial")); return false; }
+            try { Log("launch: " + GameLauncher.Launch(settings, profile, nick, ip, windowIndex, autoConnect)); return true; }
             catch (Exception ex) { MessageBox.Show(L.F("failed", ex.Message)); return false; }
         }
 
@@ -1356,7 +1397,7 @@ namespace CoopManager
         [DllImport("kernel32.dll")]
         static extern bool AttachConsole(int pid);
 
-        // command line mode: --install --repair --uninstall --verify --status --update --publish --assemble <dir>
+        // command line mode: --install --repair --uninstall --verify --status --update --publish --assemble <dir> --test --stop
         static int RunCli(string[] args)
         {
             AttachConsole(-1);
@@ -1402,6 +1443,18 @@ namespace CoopManager
                         case "--update":
                             if (settings.PlayerMode) { new Release(settings, log).Download(inst.PlayerPackageDir); inst.Install(true); }
                             else inst.Install(true);
+                            break;
+                        case "--test":
+                            GameLauncher.StartDetachedServer(inst);
+                            Thread.Sleep(1000);
+                            log(GameLauncher.Launch(settings, 1, settings.Nick1, "127.0.0.1", 0, true));
+                            Thread.Sleep(1500);
+                            log(GameLauncher.Launch(settings, 2, settings.Nick2, "127.0.0.1", 1, true));
+                            break;
+                        case "--stop":
+                            GameLauncher.StopGames();
+                            GameLauncher.StopServers(inst);
+                            log("stopped");
                             break;
                         case "--assemble":
                             inst.AssembleFromBuild(args.Length > 1 ? args[1] : inst.DevPackageDir, true);
