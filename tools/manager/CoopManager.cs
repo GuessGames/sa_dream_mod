@@ -209,7 +209,7 @@ namespace CoopManager
                         case "GameDir": s.GameDir = v; break;
                         case "SourceDir": s.SourceDir = v; break;
                         case "AdditionalZip": s.AdditionalZip = v; break;
-                        case "ReleaseRepo": if (v.Length > 0) s.ReleaseRepo = v; break;
+                        case "ReleaseRepo": if (NormalizeRepo(v).Length > 0) s.ReleaseRepo = NormalizeRepo(v); break;
                         case "ReleaseDir": s.ReleaseDir = v; break;
                         case "Ukrainian": s.Ukrainian = v == "1"; break;
                         case "PlayerMode": s.PlayerMode = v != "0"; break;
@@ -271,6 +271,16 @@ namespace CoopManager
                        File.Exists(Path.Combine(dir, "gta-sa.exe")) || File.Exists(Path.Combine(dir, @"models\gta3.img")));
             }
             catch { return false; }
+        }
+
+        // "https://github.com/owner/repo(.git)(/)" or "owner/repo" -> "owner/repo"
+        public static string NormalizeRepo(string value)
+        {
+            string v = (value ?? "").Trim();
+            v = Regex.Replace(v, @"^(https?://)?(www\.)?github\.com/", "", RegexOptions.IgnoreCase);
+            v = Regex.Replace(v, @"(\.git)?/*$", "", RegexOptions.IgnoreCase);
+            var parts = v.Split('/');
+            return parts.Length >= 2 ? parts[0] + "/" + parts[1] : v;
         }
 
         public static string FindRepoRoot(string dir)
@@ -702,7 +712,8 @@ namespace CoopManager
                 }
             }
             catch (Exception ex) { last = ex; }
-            throw new Exception("cannot reach GitHub" + (last != null ? ": " + last.Message : ""));
+            // name the repo: a 404 almost always means a wrong release repository in the settings
+            throw new Exception("cannot reach the release repository '" + s.ReleaseRepo + "' on GitHub" + (last != null ? ": " + last.Message : ""));
         }
 
         string RawUrl(string sha, string path) { return "https://raw.githubusercontent.com/" + s.ReleaseRepo + "/" + sha + "/" + path; }
@@ -1559,7 +1570,8 @@ namespace CoopManager
             {
                 settings.GameDir = tbGame.Text.Trim();
                 settings.AdditionalZip = tbZip.Text.Trim();
-                settings.ReleaseRepo = tbRelRepo.Text.Trim();
+                settings.ReleaseRepo = Settings.NormalizeRepo(tbRelRepo.Text);
+                tbRelRepo.Text = settings.ReleaseRepo;
                 settings.SourceDir = tbSrc.Text.Trim();
                 settings.ReleaseDir = tbRelDir.Text.Trim();
                 settings.Save();
