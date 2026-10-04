@@ -1,5 +1,9 @@
 // CoopAndreas Manager - install / uninstall / repair / update / launch / logs
 // Built with the .NET Framework 4.x csc.exe (C# 5), no external dependencies. See build.cmd.
+//
+// Two modes:
+//  * player    - downloads the prebuilt package from the PUBLIC release repo (no git needed) and installs it
+//  * developer - assembles the package from the local xmake build of the PRIVATE source repo, can publish releases
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -7,15 +11,17 @@ using System.Drawing;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Net;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Windows.Forms;
 using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("CoopAndreas Manager")]
-[assembly: System.Reflection.AssemblyVersion("1.0.0.0")]
+[assembly: System.Reflection.AssemblyVersion("1.1.0.0")]
 
 namespace CoopManager
 {
@@ -29,28 +35,49 @@ namespace CoopManager
             {"tabInstall", new[]{"Встановлення", "Install"}},
             {"tabLaunch", new[]{"Запуск", "Launch"}},
             {"tabLogs", new[]{"Логи", "Logs"}},
-            {"tabSettings", new[]{"Шляхи", "Paths"}},
+            {"tabSettings", new[]{"Налаштування", "Settings"}},
             {"lang", new[]{"English", "Українська"}},
             {"gameDir", new[]{"Тека гри:", "Game folder:"}},
-            {"srcDir", new[]{"Код моду (git):", "Mod source (git):"}},
-            {"addZip", new[]{"Архів additional:", "Additional archive:"}},
+            {"srcDir", new[]{"Код моду (git, розробник):", "Mod source (git, developer):"}},
+            {"addZip", new[]{"Архів з gta_sa.exe 1.0 US:", "Archive with gta_sa.exe 1.0 US:"}},
+            {"releaseRepo", new[]{"Публічний реліз (owner/repo):", "Public release (owner/repo):"}},
+            {"releaseDir", new[]{"Локальна копія релізу (розробник):", "Local release clone (developer):"}},
             {"browse", new[]{"Огляд…", "Browse…"}},
             {"save", new[]{"Зберегти", "Save"}},
             {"status", new[]{"Стан", "Status"}},
             {"refresh", new[]{"Оновити стан", "Refresh status"}},
-            {"install", new[]{"Встановити / оновити файли", "Install / update files"}},
+            {"install", new[]{"Встановити / перевстановити", "Install / reinstall"}},
             {"uninstall", new[]{"Видалити мод", "Uninstall mod"}},
             {"repair", new[]{"Перевірити і виправити", "Verify and repair"}},
             {"build", new[]{"Зібрати з коду", "Build from source"}},
-            {"update", new[]{"Оновити з git + зібрати + встановити", "Git pull + build + install"}},
+            {"fixPerms", new[]{"Надати права на теку гри", "Grant access to game folder"}},
             {"exeOk", new[]{"gta_sa.exe: версія 1.0 US (сумісна)", "gta_sa.exe: version 1.0 US (compatible)"}},
             {"exeBad", new[]{"gta_sa.exe: НЕСУМІСНА версія (буде замінена під час встановлення)", "gta_sa.exe: INCOMPATIBLE version (will be replaced on install)"}},
             {"exeMissing", new[]{"gta_sa.exe не знайдено", "gta_sa.exe not found"}},
-            {"modInstalled", new[]{"Мод встановлено: {0}", "Mod installed: {0}"}},
+            {"modInstalled", new[]{"Мод встановлено: версія {0}", "Mod installed: version {0}"}},
             {"modNotInstalled", new[]{"Мод не встановлено", "Mod is not installed"}},
-            {"buildFound", new[]{"Зібрані файли: {0}", "Built files: {0}"}},
-            {"buildMissing", new[]{"Зібраних файлів немає — натисніть «Зібрати з коду»", "No build output — press \"Build from source\""}},
-            {"backupFound", new[]{"Резервна копія оригіналів: є", "Backup of original files: present"}},
+            {"pkgReady", new[]{"Пакет для встановлення: версія {0}", "Package to install: version {0}"}},
+            {"pkgMissing", new[]{"Пакета немає — натисніть «Оновити»", "No package yet — press \"Update\""}},
+            {"buildMissing", new[]{"Немає локальної збірки — натисніть «Зібрати з коду»", "No local build — press \"Build from source\""}},
+            {"backupFound", new[]{"Резервна копія оригінальних файлів: є", "Backup of original files: present"}},
+            {"writableNo", new[]{"Тека гри: немає прав на запис — натисніть «Надати права на теку гри»", "Game folder: not writable — press \"Grant access to game folder\""}},
+            {"notWritable", new[]{"Немає прав на запис у теку гри (вона захищена як Program Files). Натисніть «Так», щоб надати вашому користувачу права на зміну цієї теки (з'явиться запит адміністратора Windows).", "The game folder is not writable (protected like Program Files). Press \"Yes\" to grant your user modify rights on this folder (a Windows administrator prompt will appear)."}},
+            {"updates", new[]{"Оновлення", "Updates"}},
+            {"modePlayer", new[]{"Гравець: оновлення з публічного релізу", "Player: updates from the public release"}},
+            {"modeDev", new[]{"Розробник: моя локальна збірка", "Developer: my local build"}},
+            {"checkUpdates", new[]{"Перевірити оновлення", "Check for updates"}},
+            {"update", new[]{"Оновити і встановити", "Update and install"}},
+            {"publish", new[]{"Опублікувати реліз", "Publish release"}},
+            {"remoteVersion", new[]{"Доступна версія: {0}", "Available version: {0}"}},
+            {"upToDate", new[]{"Встановлена остання версія ({0})", "Up to date ({0})"}},
+            {"newVersion", new[]{"Є нова версія: {0} (встановлено: {1})", "New version available: {0} (installed: {1})"}},
+            {"devInfo", new[]{"Код: {0}   гілка: {1}   коміт: {2}", "Source: {0}   branch: {1}   commit: {2}"}},
+            {"repoMissing", new[]{"Репозиторій з кодом не знайдено (потрібен тільки розробнику)", "Source repository not found (developers only)"}},
+            {"unsafeOrigin", new[]{"Remote 'origin' не налаштований або вказує на оригінальний репозиторій Tornamic. Дозволено працювати тільки з нашими репозиторіями.", "Remote 'origin' is not set or points to the original Tornamic repository. Only our own repositories are allowed."}},
+            {"dirtyTree", new[]{"У репозиторії з кодом є незакомічені зміни. Закомітьте їх перед публікацією, щоб реліз відповідав коду.", "The source repository has uncommitted changes. Commit them before publishing so the release matches the source."}},
+            {"confirmPublish", new[]{"Опублікувати нову версію у публічний репозиторій {0}?\n\nДо релізу буде додано архів коду цієї версії (вимога ліцензії GPL-3).", "Publish a new version to the public repository {0}?\n\nA source archive of this version is included (GPL-3 license requirement)."}},
+            {"releaseDirMissing", new[]{"Локальна копія релізного репозиторію не знайдена: {0}", "Local release clone not found: {0}"}},
+            {"selfUpdated", new[]{"Менеджер оновлено — перезапустіть його.", "The manager was updated — please restart it."}},
             {"serial", new[]{"Серійний ключ бета-тесту", "Beta test serial key"}},
             {"pcid", new[]{"ID вашого ПК:", "Your PC ID:"}},
             {"copyCmd", new[]{"Копіювати команду", "Copy command"}},
@@ -72,7 +99,7 @@ namespace CoopManager
             {"nick2", new[]{"Нік вікна 2:", "Window 2 nick:"}},
             {"launchTest", new[]{"Сервер + 2 вікна гри", "Server + 2 game windows"}},
             {"killGames", new[]{"Закрити всі вікна гри", "Close all game windows"}},
-            {"testHint", new[]{"Вікна ставляться поруч. У грі виберіть «Start Game» → підключення до 127.0.0.1 (нік і IP вже прописані).", "Windows are placed side by side. In game choose \"Start Game\" → connect to 127.0.0.1 (nick and IP are pre-filled)."}},
+            {"testHint", new[]{"Вікна ставляться поруч. У грі виберіть «Start Game» → підключення до 127.0.0.1 (нік і IP вже прописані). Роздільність 800×600.", "Windows are placed side by side. In game choose \"Start Game\" → connect to 127.0.0.1 (nick and IP are pre-filled). Resolution 800×600."}},
             {"logFile", new[]{"Файл:", "File:"}},
             {"filter", new[]{"Фільтр:", "Filter:"}},
             {"onlyWarn", new[]{"Тільки попередження/помилки", "Warnings/errors only"}},
@@ -86,26 +113,7 @@ namespace CoopManager
             {"busy", new[]{"Зачекайте, виконується інша операція…", "Please wait, another operation is running…"}},
             {"failed", new[]{"Помилка: {0}", "Error: {0}"}},
             {"gameRunning", new[]{"Гра запущена — закрийте її перед цією операцією.", "The game is running — close it before this operation."}},
-            {"fixPerms", new[]{"Надати права на теку гри", "Grant access to game folder"}},
-            {"notWritable", new[]{"Немає прав на запис у теку гри (вона захищена як Program Files). Натисніть «Так», щоб надати вашому користувачу права на зміну цієї теки (з'явиться запит адміністратора Windows).", "The game folder is not writable (protected like Program Files). Press \"Yes\" to grant your user modify rights on this folder (a Windows administrator prompt will appear)."}},
-            {"writableNo", new[]{"Тека гри: немає прав на запис — натисніть «Надати права на теку гри»", "Game folder: not writable — press \"Grant access to game folder\""}},
-            {"repo", new[]{"Наш приватний репозиторій", "Our private repository"}},
-            {"repoUrl", new[]{"URL репозиторію:", "Repository URL:"}},
-            {"branch", new[]{"Гілка:", "Branch:"}},
-            {"clone", new[]{"Клонувати", "Clone"}},
-            {"checkUpdates", new[]{"Перевірити оновлення", "Check for updates"}},
-            {"updateRepo", new[]{"Оновити (git pull) і встановити", "Update (git pull) and install"}},
-            {"publish", new[]{"Опублікувати збірку (для розробника)", "Publish build (developer)"}},
-            {"srcDist", new[]{"Ставити готові файли з репозиторію (dist)", "Install prebuilt files from the repo (dist)"}},
-            {"srcBuild", new[]{"Ставити мою локальну збірку (розробник)", "Install my local build (developer)"}},
-            {"repoInfo", new[]{"Remote: {0}   гілка: {1}   коміт: {2}", "Remote: {0}   branch: {1}   commit: {2}"}},
-            {"repoMissing", new[]{"Репозиторій не знайдено — вкажіть URL на вкладці «Шляхи» і натисніть «Клонувати»", "Repository not found — set the URL on the Paths tab and press \"Clone\""}},
-            {"updatesAvail", new[]{"Доступно оновлень: {0} коміт(ів)", "Updates available: {0} commit(s)"}},
-            {"upToDate", new[]{"Встановлена остання версія", "Up to date"}},
-            {"unsafeOrigin", new[]{"Remote 'origin' не налаштований або вказує на оригінальний репозиторій Tornamic. Оновлення дозволені тільки з нашого приватного репозиторію.", "Remote 'origin' is not set or points to the original Tornamic repository. Updates are only allowed from our private repository."}},
-            {"dirtyTree", new[]{"У репозиторії є незбережені зміни (git status). Закомітьте або скасуйте їх перед оновленням.", "The repository has uncommitted changes (git status). Commit or discard them before updating."}},
-            {"confirmPublish", new[]{"Скопіювати поточну збірку в dist/, зробити коміт і запушити в наш приватний репозиторій ({0})?", "Copy the current build to dist/, commit and push to our private repository ({0})?"}},
-            {"noAdditional", new[]{"Не знайдено архів/теку additional.", "The additional archive/folder was not found."}},
+            {"noExe", new[]{"Потрібен gta_sa.exe версії 1.0 US: вкажіть архів або теку з ним на вкладці «Налаштування».", "gta_sa.exe 1.0 US is required: set the archive or folder containing it on the Settings tab."}},
         };
         public static string T(string key)
         {
@@ -116,21 +124,21 @@ namespace CoopManager
         public static string F(string key, params object[] args) { return string.Format(T(key), args); }
     }
 
-    // ------------------------------------------------------------------ settings (ini next to the exe)
+    // ------------------------------------------------------------------ settings (%LOCALAPPDATA%\CoopAndreasManager)
     class Settings
     {
-        public string GameDir = @"D:\Grand Theft Auto San Andreas";
-        public string SourceDir = @"D:\CoopAndreasDev\src";
-        public string AdditionalZip = @"D:\additional.zip";
+        public string GameDir = @"C:\Program Files (x86)\Rockstar Games\GTA San Andreas";
+        public string SourceDir = "";
+        public string AdditionalZip = "";
+        public string ReleaseRepo = "GuessGames/sa_dream_mod_release";
+        public string ReleaseDir = "";
         public bool Ukrainian = true;
+        public bool PlayerMode = true;
         public string Nick = "Player";
         public string Ip = "127.0.0.1";
         public int Port = 6767;
         public string Nick1 = "Tester1";
         public string Nick2 = "Tester2";
-        public string RepoUrl = "https://github.com/GuessGames/sa_dream_mod.git";
-        public string Branch = "main";
-        public bool InstallFromDist = true;
 
         public static string AppDataDir { get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CoopAndreasManager"); } }
         static string FilePath { get { return Path.Combine(AppDataDir, "CoopManager.ini"); } }
@@ -138,29 +146,47 @@ namespace CoopManager
         public static Settings Load()
         {
             var s = new Settings();
-            if (!File.Exists(FilePath)) return s;
-            foreach (var line in File.ReadAllLines(FilePath, Encoding.UTF8))
+            if (File.Exists(FilePath))
             {
-                int eq = line.IndexOf('=');
-                if (eq <= 0) continue;
-                string k = line.Substring(0, eq).Trim(), v = line.Substring(eq + 1).Trim();
-                switch (k)
+                foreach (var line in File.ReadAllLines(FilePath, Encoding.UTF8))
                 {
-                    case "GameDir": s.GameDir = v; break;
-                    case "SourceDir": s.SourceDir = v; break;
-                    case "AdditionalZip": s.AdditionalZip = v; break;
-                    case "Ukrainian": s.Ukrainian = v == "1"; break;
-                    case "Nick": s.Nick = v; break;
-                    case "Ip": s.Ip = v; break;
-                    case "Port": int.TryParse(v, out s.Port); break;
-                    case "Nick1": s.Nick1 = v; break;
-                    case "Nick2": s.Nick2 = v; break;
-                    case "RepoUrl": s.RepoUrl = v; break;
-                    case "Branch": s.Branch = v; break;
-                    case "InstallFromDist": s.InstallFromDist = v != "0"; break;
+                    int eq = line.IndexOf('=');
+                    if (eq <= 0) continue;
+                    string k = line.Substring(0, eq).Trim().TrimStart('\uFEFF'), v = line.Substring(eq + 1).Trim();
+                    switch (k)
+                    {
+                        case "GameDir": s.GameDir = v; break;
+                        case "SourceDir": s.SourceDir = v; break;
+                        case "AdditionalZip": s.AdditionalZip = v; break;
+                        case "ReleaseRepo": if (v.Length > 0) s.ReleaseRepo = v; break;
+                        case "ReleaseDir": s.ReleaseDir = v; break;
+                        case "Ukrainian": s.Ukrainian = v == "1"; break;
+                        case "PlayerMode": s.PlayerMode = v != "0"; break;
+                        case "InstallFromDist": s.PlayerMode = v != "0"; break; // pre-1.1 name
+                        case "Nick": s.Nick = v; break;
+                        case "Ip": s.Ip = v; break;
+                        case "Port": int.TryParse(v, out s.Port); break;
+                        case "Nick1": s.Nick1 = v; break;
+                        case "Nick2": s.Nick2 = v; break;
+                    }
                 }
             }
+            // developer machine: the exe was built inside the source repo
+            if (s.SourceDir.Length == 0)
+            {
+                string repo = FindRepoRoot(Path.GetDirectoryName(Application.ExecutablePath));
+                if (repo != null) { s.SourceDir = repo; s.PlayerMode = false; }
+            }
+            if (s.ReleaseDir.Length == 0 && s.SourceDir.Length > 0)
+                s.ReleaseDir = Path.Combine(Path.GetDirectoryName(s.SourceDir.TrimEnd('\\')), "release");
             return s;
+        }
+
+        public static string FindRepoRoot(string dir)
+        {
+            for (var d = new DirectoryInfo(dir); d != null; d = d.Parent)
+                if (Directory.Exists(Path.Combine(d.FullName, ".git"))) return d.FullName;
+            return null;
         }
 
         public void Save()
@@ -169,17 +195,73 @@ namespace CoopManager
             sb.AppendLine("GameDir=" + GameDir);
             sb.AppendLine("SourceDir=" + SourceDir);
             sb.AppendLine("AdditionalZip=" + AdditionalZip);
+            sb.AppendLine("ReleaseRepo=" + ReleaseRepo);
+            sb.AppendLine("ReleaseDir=" + ReleaseDir);
             sb.AppendLine("Ukrainian=" + (Ukrainian ? "1" : "0"));
+            sb.AppendLine("PlayerMode=" + (PlayerMode ? "1" : "0"));
             sb.AppendLine("Nick=" + Nick);
             sb.AppendLine("Ip=" + Ip);
             sb.AppendLine("Port=" + Port);
             sb.AppendLine("Nick1=" + Nick1);
             sb.AppendLine("Nick2=" + Nick2);
-            sb.AppendLine("RepoUrl=" + RepoUrl);
-            sb.AppendLine("Branch=" + Branch);
-            sb.AppendLine("InstallFromDist=" + (InstallFromDist ? "1" : "0"));
             Directory.CreateDirectory(AppDataDir);
-            File.WriteAllText(FilePath, sb.ToString(), Encoding.UTF8);
+            File.WriteAllText(FilePath, sb.ToString(), new UTF8Encoding(false));
+        }
+    }
+
+    // ------------------------------------------------------------------ package manifest (manifest.txt)
+    //   version=2026.10.04-1cbe9b2
+    //   file=bin/CoopAndreasSA.dll|<sha256>|<size>
+    class Manifest
+    {
+        public string Version = "";
+        public readonly Dictionary<string, string> Meta = new Dictionary<string, string>();
+        public readonly SortedDictionary<string, string> Files = new SortedDictionary<string, string>(StringComparer.OrdinalIgnoreCase); // path -> sha256
+
+        public static Manifest Parse(string text)
+        {
+            var m = new Manifest();
+            foreach (var raw in text.Replace("\r", "").Split('\n'))
+            {
+                int eq = raw.IndexOf('=');
+                if (eq <= 0) continue;
+                string k = raw.Substring(0, eq), v = raw.Substring(eq + 1);
+                if (k == "file")
+                {
+                    var parts = v.Split('|');
+                    if (parts.Length >= 2) m.Files[parts[0]] = parts[1];
+                }
+                else
+                {
+                    m.Meta[k] = v;
+                    if (k == "version") m.Version = v;
+                }
+            }
+            return m;
+        }
+
+        public static Manifest Load(string dir)
+        {
+            string p = Path.Combine(dir, "manifest.txt");
+            return File.Exists(p) ? Parse(File.ReadAllText(p)) : null;
+        }
+
+        // hashes every file of the package directory (except manifest.txt / .git / source) and writes manifest.txt
+        public static Manifest Write(string dir, string version, Dictionary<string, string> meta)
+        {
+            var m = new Manifest { Version = version };
+            foreach (var f in Directory.GetFiles(dir, "*", SearchOption.AllDirectories))
+            {
+                string rel = f.Substring(dir.TrimEnd('\\').Length + 1).Replace('\\', '/');
+                if (rel == "manifest.txt" || rel.StartsWith(".git") || rel.StartsWith("source/") || rel == "README.md") continue;
+                m.Files[rel] = Installer.Sha256(f);
+            }
+            var sb = new StringBuilder();
+            sb.AppendLine("version=" + version);
+            foreach (var kv in meta) sb.AppendLine(kv.Key + "=" + kv.Value);
+            foreach (var kv in m.Files) sb.AppendLine("file=" + kv.Key + "|" + kv.Value + "|" + new FileInfo(Path.Combine(dir, kv.Key)).Length);
+            File.WriteAllText(Path.Combine(dir, "manifest.txt"), sb.ToString(), new UTF8Encoding(false));
+            return m;
         }
     }
 
@@ -189,16 +271,17 @@ namespace CoopManager
         public const string BackupDirName = "_coop_backup";
         public const string ManifestName = "install_manifest.txt";
         public const long Exe10UsSize = 14383616;
+        public const long AsiLoaderVorbisSize = 18944; // vorbisFile.dll of the ASI loader
 
         readonly Settings s;
         readonly Action<string> log;
         public Installer(Settings settings, Action<string> logger) { s = settings; log = logger; }
 
         public string BuildDir { get { return Path.Combine(s.SourceDir, @"build\windows\x86\release"); } }
-        public string DistDir { get { return Path.Combine(s.SourceDir, "dist"); } }
-        // where the mod binaries are taken from: prebuilt dist/bin (players) or the local xmake output (developer)
-        public string BinDir { get { return s.InstallFromDist ? Path.Combine(DistDir, "bin") : BuildDir; } }
-        public string AdditionalDir { get { return Path.Combine(DistDir, "additional"); } }
+        public string ManagerBuildPath { get { return Path.Combine(s.SourceDir, @"build\manager\CoopAndreasManager.exe"); } }
+        public string PlayerPackageDir { get { return Path.Combine(Settings.AppDataDir, "package"); } }
+        public string DevPackageDir { get { return Path.Combine(Settings.AppDataDir, "dev_package"); } }
+        public string PackageDir { get { return s.PlayerMode ? PlayerPackageDir : DevPackageDir; } }
         public string BackupDir { get { return Path.Combine(s.GameDir, BackupDirName); } }
         public string ManifestPath { get { return Path.Combine(BackupDir, ManifestName); } }
         public string LogsDir { get { return Path.Combine(s.GameDir, @"CoopAndreas\logs"); } }
@@ -215,6 +298,16 @@ namespace CoopManager
         }
 
         public bool IsInstalled { get { return File.Exists(ManifestPath); } }
+
+        public string InstalledVersion
+        {
+            get
+            {
+                if (!IsInstalled) return "";
+                var first = File.ReadAllLines(ManifestPath).FirstOrDefault(l => l.StartsWith("# version "));
+                return first == null ? "?" : first.Substring(10);
+            }
+        }
 
         public bool IsGameDirWritable()
         {
@@ -251,21 +344,22 @@ namespace CoopManager
             return new FileInfo(exe).Length == Exe10UsSize ? L.T("exeOk") : L.T("exeBad");
         }
 
-        // gta_sa.exe 1.0 US is not stored in git (Rockstar binary): it comes from additional.zip (or a folder)
+        // gta_sa.exe 1.0 US is never distributed by us (Rockstar binary): it comes from the user's archive or folder
         public string GetCompatibleExe()
         {
             string p = s.AdditionalZip;
+            if (string.IsNullOrEmpty(p)) return null;
             if (Directory.Exists(p))
             {
-                foreach (var f in Directory.GetFiles(p, "gta_sa.exe", SearchOption.AllDirectories)) return f;
-                return null;
+                return Directory.GetFiles(p, "gta_sa.exe", SearchOption.AllDirectories)
+                    .FirstOrDefault(f => new FileInfo(f).Length == Exe10UsSize);
             }
             if (!File.Exists(p)) return null;
             string tmp = Path.Combine(Path.GetTempPath(), "CoopManager_exe");
             Directory.CreateDirectory(tmp);
             using (var zip = ZipFile.OpenRead(p))
             {
-                var e = zip.Entries.FirstOrDefault(x => x.Name.Equals("gta_sa.exe", StringComparison.OrdinalIgnoreCase));
+                var e = zip.Entries.FirstOrDefault(x => x.Name.Equals("gta_sa.exe", StringComparison.OrdinalIgnoreCase) && x.Length == Exe10UsSize);
                 if (e == null) return null;
                 string dst = Path.Combine(tmp, "gta_sa.exe");
                 e.ExtractToFile(dst, true);
@@ -273,31 +367,57 @@ namespace CoopManager
             }
         }
 
-        // map: destination path relative to game dir -> source absolute path
-        public Dictionary<string, string> BuildFileMap()
+        // developer: builds a package directory from the local build of the source repo
+        public void AssembleFromBuild(string target, bool clean)
         {
-            var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var f in Directory.GetFiles(AdditionalDir))
+            if (!File.Exists(Path.Combine(BuildDir, "CoopAndreasSA.dll"))) throw new Exception(L.T("buildMissing"));
+            if (clean)
             {
-                string name = Path.GetFileName(f);
-                // user-tweakable ini files are only copied when missing, handled separately
-                if (name.EndsWith(".ini", StringComparison.OrdinalIgnoreCase)) continue;
-                map[name] = f;
+                foreach (var sub in new[] { "bin", "additional", "scm" })
+                    if (Directory.Exists(Path.Combine(target, sub))) Directory.Delete(Path.Combine(target, sub), true);
             }
-            map["eax.dll"] = Path.Combine(BinDir, "proxy.dll");
-            map["CoopAndreasSA.dll"] = Path.Combine(BinDir, "CoopAndreasSA.dll");
-            map["LaunchCoopAndreas.exe"] = Path.Combine(BinDir, "LaunchCoopAndreas.exe");
-            map["LaunchCoopAndreas.exe.manifest"] = Path.Combine(BinDir, "LaunchCoopAndreas.exe.manifest");
-            map[@"CoopAndreas\main.scm"] = Path.Combine(s.SourceDir, @"scm\main.scm");
-            map[@"CoopAndreas\script.img"] = Path.Combine(s.SourceDir, @"scm\script.img");
-            map[@"CoopAndreasServer\server.exe"] = Path.Combine(BinDir, "server.exe");
-            return map;
+            Directory.CreateDirectory(Path.Combine(target, "bin"));
+            Directory.CreateDirectory(Path.Combine(target, "additional"));
+            Directory.CreateDirectory(Path.Combine(target, "scm"));
+            foreach (var name in new[] { "CoopAndreasSA.dll", "proxy.dll", "LaunchCoopAndreas.exe", "LaunchCoopAndreas.exe.manifest", "server.exe" })
+                File.Copy(Path.Combine(BuildDir, name), Path.Combine(target, "bin", name), true);
+            foreach (var f in Directory.GetFiles(Path.Combine(s.SourceDir, @"dist\additional")))
+            {
+                // Rockstar's original vorbisFile.dll is never redistributed; it is recreated from the user's game on install
+                if (Path.GetFileName(f).Equals("vorbisHooked.dll", StringComparison.OrdinalIgnoreCase)) continue;
+                File.Copy(f, Path.Combine(target, "additional", Path.GetFileName(f)), true);
+            }
+            foreach (var name in new[] { "main.scm", "script.img" })
+                File.Copy(Path.Combine(s.SourceDir, "scm", name), Path.Combine(target, "scm", name), true);
+            string mgr = File.Exists(ManagerBuildPath) ? ManagerBuildPath : Application.ExecutablePath;
+            File.Copy(mgr, Path.Combine(target, "CoopAndreasManager.exe"), true);
+
+            var git = new Git(s);
+            string head = git.Get("rev-parse --short HEAD");
+            string version = DateTime.Now.ToString("yyyy.MM.dd.HHmm") + "-" + (head.Length > 0 ? head : "local");
+            var meta = new Dictionary<string, string> { { "commit", head }, { "built", DateTime.Now.ToString("yyyy-MM-dd HH:mm") } };
+            Manifest.Write(target, version, meta);
+            log("package " + version + " -> " + target);
         }
 
-        public bool BuildExists()
+        // map: destination path relative to game dir -> source absolute path
+        Dictionary<string, string> BuildFileMap(string pkg)
         {
-            return File.Exists(Path.Combine(BinDir, "CoopAndreasSA.dll")) && File.Exists(Path.Combine(BinDir, "proxy.dll"))
-                && Directory.Exists(AdditionalDir);
+            var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var f in Directory.GetFiles(Path.Combine(pkg, "additional")))
+            {
+                string name = Path.GetFileName(f);
+                if (name.EndsWith(".ini", StringComparison.OrdinalIgnoreCase)) continue; // copied only when missing
+                map[name] = f;
+            }
+            map["eax.dll"] = Path.Combine(pkg, @"bin\proxy.dll");
+            map["CoopAndreasSA.dll"] = Path.Combine(pkg, @"bin\CoopAndreasSA.dll");
+            map["LaunchCoopAndreas.exe"] = Path.Combine(pkg, @"bin\LaunchCoopAndreas.exe");
+            map["LaunchCoopAndreas.exe.manifest"] = Path.Combine(pkg, @"bin\LaunchCoopAndreas.exe.manifest");
+            map[@"CoopAndreas\main.scm"] = Path.Combine(pkg, @"scm\main.scm");
+            map[@"CoopAndreas\script.img"] = Path.Combine(pkg, @"scm\script.img");
+            map[@"CoopAndreasServer\server.exe"] = Path.Combine(pkg, @"bin\server.exe");
+            return map;
         }
 
         void EnsureGameNotRunning()
@@ -308,15 +428,18 @@ namespace CoopManager
         public void Install(bool onlyChanged)
         {
             EnsureGameNotRunning();
-            if (!BuildExists()) throw new Exception(L.T("buildMissing"));
             if (!Directory.Exists(s.GameDir)) throw new Exception("Game folder not found: " + s.GameDir);
+            if (!s.PlayerMode) AssembleFromBuild(DevPackageDir, true);
+            string pkg = PackageDir;
+            var pm = Manifest.Load(pkg);
+            if (pm == null) throw new Exception(L.T("pkgMissing"));
 
-            var map = BuildFileMap();
+            var map = BuildFileMap(pkg);
             string gameExe = Path.Combine(s.GameDir, "gta_sa.exe");
             if (!File.Exists(gameExe) || new FileInfo(gameExe).Length != Exe10UsSize)
             {
                 string exe = GetCompatibleExe();
-                if (exe == null) throw new Exception(L.T("noAdditional"));
+                if (exe == null) throw new Exception(L.T("noExe"));
                 map["gta_sa.exe"] = exe;
             }
             Directory.CreateDirectory(BackupDir);
@@ -341,7 +464,17 @@ namespace CoopManager
                 log("eax.dll -> eax_orig.dll");
             }
 
-            // 3. copy files
+            // 3. the ASI loader replaces vorbisFile.dll and loads the original one as vorbisHooked.dll
+            string hooked = Path.Combine(s.GameDir, "vorbisHooked.dll");
+            if (!File.Exists(hooked))
+            {
+                string orig = new[] { Path.Combine(BackupDir, "vorbisFile.dll"), Path.Combine(s.GameDir, "vorbisFile.dll") }
+                    .FirstOrDefault(f => File.Exists(f) && new FileInfo(f).Length != AsiLoaderVorbisSize);
+                if (orig != null) { File.Copy(orig, hooked); log("original vorbisFile.dll -> vorbisHooked.dll"); }
+                else log("! vorbisHooked.dll not found: the original vorbisFile.dll of the game is missing");
+            }
+
+            // 4. copy files
             var manifest = new List<string>();
             foreach (var kv in map)
             {
@@ -349,34 +482,31 @@ namespace CoopManager
                 if (!File.Exists(kv.Value)) { log("! missing source: " + kv.Value); continue; }
                 string srcHash = Sha256(kv.Value);
                 bool same = File.Exists(dst) && Sha256(dst) == srcHash;
-                if (!same || !onlyChanged)
+                if (!same)
                 {
                     Directory.CreateDirectory(Path.GetDirectoryName(dst));
-                    if (!same)
-                    {
-                        File.Copy(kv.Value, dst, true);
-                        log("copy: " + kv.Key);
-                    }
+                    File.Copy(kv.Value, dst, true);
+                    log("copy: " + kv.Key);
                 }
                 // gta_sa.exe is restored from the backup on uninstall, so it is not tracked as a mod file
                 if (!kv.Key.Equals("gta_sa.exe", StringComparison.OrdinalIgnoreCase)) manifest.Add(kv.Key + "|" + srcHash);
             }
 
-            // 4. default ini files, never overwritten
-            foreach (var f in Directory.GetFiles(AdditionalDir, "*.ini"))
+            // 5. default ini files, never overwritten
+            foreach (var f in Directory.GetFiles(Path.Combine(pkg, "additional"), "*.ini"))
             {
                 string dst = Path.Combine(s.GameDir, Path.GetFileName(f));
                 if (!File.Exists(dst)) { File.Copy(f, dst); log("copy (default config): " + Path.GetFileName(f)); }
                 manifest.Add(Path.GetFileName(f) + "|config");
             }
             manifest.Add("eax_orig.dll|generated");
+            manifest.Add("vorbisHooked.dll|generated");
 
             Directory.CreateDirectory(LogsDir);
-            File.WriteAllLines(ManifestPath, new[] { "# installed " + DateTime.Now.ToString("yyyy-MM-dd HH:mm") }.Concat(manifest));
-            log(L.T("done"));
+            File.WriteAllLines(ManifestPath, new[] { "# installed " + DateTime.Now.ToString("yyyy-MM-dd HH:mm"), "# version " + pm.Version }.Concat(manifest));
+            log(L.T("done") + " " + pm.Version);
         }
 
-        // returns list of problems; with fix=true reinstalls the broken files
         public List<string> Verify()
         {
             var problems = new List<string>();
@@ -426,13 +556,105 @@ namespace CoopManager
         }
     }
 
-    // ------------------------------------------------------------------ git (only our private repo, never upstream)
+    // ------------------------------------------------------------------ public release repo (download without git)
+    class Release
+    {
+        readonly Settings s;
+        readonly Action<string> log;
+        public Release(Settings settings, Action<string> logger) { s = settings; log = logger; }
+
+        static WebClient Client()
+        {
+            ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
+            var wc = new WebClient();
+            wc.Headers[HttpRequestHeader.UserAgent] = "CoopAndreasManager";
+            return wc;
+        }
+
+        // the commit sha of the release branch, so that manifest and files are read from the same snapshot
+        string HeadSha()
+        {
+            using (var wc = Client())
+            {
+                string json = wc.DownloadString("https://api.github.com/repos/" + s.ReleaseRepo + "/commits/main");
+                var m = Regex.Match(json, "\"sha\"\\s*:\\s*\"([0-9a-f]{40})\"");
+                if (!m.Success) throw new Exception("cannot read release commit");
+                return m.Groups[1].Value;
+            }
+        }
+
+        string RawUrl(string sha, string path) { return "https://raw.githubusercontent.com/" + s.ReleaseRepo + "/" + sha + "/" + path; }
+
+        public Manifest FetchRemote(out string sha)
+        {
+            sha = HeadSha();
+            using (var wc = Client())
+            {
+                wc.Encoding = Encoding.UTF8;
+                return Manifest.Parse(wc.DownloadString(RawUrl(sha, "manifest.txt")));
+            }
+        }
+
+        // downloads changed files into the player package directory; returns true when the manager itself changed
+        public bool Download(string pkgDir)
+        {
+            string sha;
+            var remote = FetchRemote(out sha);
+            log("release " + remote.Version + " (" + sha.Substring(0, 7) + ")");
+            Directory.CreateDirectory(pkgDir);
+            bool managerChanged = false;
+            using (var wc = Client())
+            {
+                foreach (var kv in remote.Files)
+                {
+                    string dst = Path.Combine(pkgDir, kv.Key.Replace('/', '\\'));
+                    if (File.Exists(dst) && Installer.Sha256(dst) == kv.Value) continue;
+                    Directory.CreateDirectory(Path.GetDirectoryName(dst));
+                    string tmp = dst + ".download";
+                    wc.DownloadFile(RawUrl(sha, kv.Key), tmp);
+                    if (Installer.Sha256(tmp) != kv.Value) { File.Delete(tmp); throw new Exception("checksum mismatch: " + kv.Key); }
+                    if (File.Exists(dst)) File.Delete(dst);
+                    File.Move(tmp, dst);
+                    log("download: " + kv.Key);
+                    if (kv.Key == "CoopAndreasManager.exe") managerChanged = true;
+                }
+            }
+            // files that are no longer part of the release
+            var local = Manifest.Load(pkgDir);
+            if (local != null)
+                foreach (var old in local.Files.Keys.Where(k => !remote.Files.ContainsKey(k)))
+                {
+                    string p = Path.Combine(pkgDir, old.Replace('/', '\\'));
+                    if (File.Exists(p)) File.Delete(p);
+                }
+            using (var wc = Client())
+            {
+                wc.Encoding = Encoding.UTF8;
+                File.WriteAllText(Path.Combine(pkgDir, "manifest.txt"), wc.DownloadString(RawUrl(sha, "manifest.txt")), new UTF8Encoding(false));
+            }
+            return managerChanged && SelfUpdate(Path.Combine(pkgDir, "CoopAndreasManager.exe"));
+        }
+
+        // a running exe cannot be overwritten but can be renamed: swap it and ask for a restart
+        static bool SelfUpdate(string newExe)
+        {
+            string me = Application.ExecutablePath;
+            if (!File.Exists(newExe) || Installer.Sha256(newExe) == Installer.Sha256(me)) return false;
+            string old = me + ".old";
+            if (File.Exists(old)) File.Delete(old);
+            File.Move(me, old);
+            File.Copy(newExe, me);
+            return true;
+        }
+    }
+
+    // ------------------------------------------------------------------ git (developer only; never the upstream repo)
     class Git
     {
         readonly Settings s;
         public Git(Settings settings) { s = settings; }
 
-        public bool RepoExists { get { return Directory.Exists(Path.Combine(s.SourceDir, ".git")); } }
+        public bool RepoExists { get { return s.SourceDir.Length > 0 && Directory.Exists(Path.Combine(s.SourceDir, ".git")); } }
 
         public int Run(string args, out string output, string workDir = null)
         {
@@ -443,45 +665,31 @@ namespace CoopManager
                 StandardOutputEncoding = Encoding.UTF8, StandardErrorEncoding = Encoding.UTF8,
             };
             psi.EnvironmentVariables["GIT_TERMINAL_PROMPT"] = "0";
-            using (var p = Process.Start(psi))
+            try
             {
-                var err = p.StandardError.ReadToEndAsync();
-                string o = p.StandardOutput.ReadToEnd();
-                p.WaitForExit();
-                output = (o + err.Result).Trim();
-                return p.ExitCode;
+                using (var p = Process.Start(psi))
+                {
+                    var err = p.StandardError.ReadToEndAsync();
+                    string o = p.StandardOutput.ReadToEnd();
+                    p.WaitForExit();
+                    output = (o + err.Result).Trim();
+                    return p.ExitCode;
+                }
             }
+            catch (Exception ex) { output = ex.Message; return -1; }
         }
 
-        public string Get(string args)
+        public string Get(string args, string workDir = null)
         {
             string o;
-            return Run(args, out o) == 0 ? o : "";
+            return Run(args, out o, workDir) == 0 ? o : "";
         }
 
-        public string OriginUrl { get { return Get("remote get-url origin"); } }
+        public string OriginUrl(string workDir = null) { return Get("remote get-url origin", workDir); }
 
-        // updates/publishing must only ever talk to our private repo
-        public bool OriginIsSafe
-        {
-            get
-            {
-                string url = OriginUrl;
-                return url.Length > 0 && url.IndexOf("Tornamic/CoopAndreas", StringComparison.OrdinalIgnoreCase) < 0;
-            }
-        }
+        public static bool IsUpstream(string url) { return url.IndexOf("Tornamic/CoopAndreas", StringComparison.OrdinalIgnoreCase) >= 0; }
 
-        public bool IsDirty(params string[] ignorePrefixes)
-        {
-            foreach (var line in Get("status --porcelain").Split('\n'))
-            {
-                string l = line.Trim();
-                if (l.Length < 3) continue;
-                string path = l.Substring(2).Trim().Replace('\\', '/');
-                if (!ignorePrefixes.Any(x => path.StartsWith(x))) return true;
-            }
-            return false;
-        }
+        public bool IsDirty(string workDir = null) { return Get("status --porcelain", workDir).Trim().Length > 0; }
     }
 
     // ------------------------------------------------------------------ serial / pc id (same as launcher/pcid.h)
@@ -524,6 +732,63 @@ namespace CoopManager
         public static extern bool WritePrivateProfileString(string section, string key, string value, string file);
     }
 
+    // ------------------------------------------------------------------ developer operations shared by GUI and CLI
+    class DevOps
+    {
+        readonly Settings s;
+        readonly Action<string> log;
+        readonly Func<string, string, string, int> runTool;
+        public DevOps(Settings settings, Action<string> logger, Func<string, string, string, int> tool) { s = settings; log = logger; runTool = tool; }
+
+        public bool Build()
+        {
+            string xm = File.Exists(@"C:\Program Files\xmake\xmake.exe") ? @"C:\Program Files\xmake\xmake.exe" : "xmake";
+            if (!File.Exists(Path.Combine(s.SourceDir, @".xmake\windows\x86\xmake.conf")))
+                runTool(xm, "f -p windows -a x86 -m release --toolchain=msvc -y", s.SourceDir);
+            if (runTool(xm, "-y", s.SourceDir) != 0) return false;
+            string cmd = Path.Combine(s.SourceDir, @"tools\manager\build.cmd");
+            return runTool("cmd.exe", "/c \"" + cmd + "\"", Path.GetDirectoryName(cmd)) == 0;
+        }
+
+        // assembles the package into the local clone of the public release repo, commits and pushes it
+        public void Publish(Func<string, bool> confirm)
+        {
+            var git = new Git(s);
+            if (!git.RepoExists) throw new Exception(L.T("repoMissing"));
+            if (!Directory.Exists(Path.Combine(s.ReleaseDir, ".git"))) throw new Exception(L.F("releaseDirMissing", s.ReleaseDir));
+            string relOrigin = git.OriginUrl(s.ReleaseDir);
+            if (relOrigin.Length == 0 || Git.IsUpstream(relOrigin) || relOrigin.IndexOf(s.ReleaseRepo, StringComparison.OrdinalIgnoreCase) < 0)
+                throw new Exception(L.T("unsafeOrigin") + " (" + relOrigin + ")");
+            if (git.IsDirty()) throw new Exception(L.T("dirtyTree"));
+            if (!confirm(relOrigin)) return;
+
+            var inst = new Installer(s, log);
+            inst.AssembleFromBuild(s.ReleaseDir, true);
+
+            // GPL-3: binaries are conveyed together with the corresponding source of the same commit
+            string head = git.Get("rev-parse --short HEAD");
+            string srcDir = Path.Combine(s.ReleaseDir, "source");
+            if (Directory.Exists(srcDir)) Directory.Delete(srcDir, true);
+            Directory.CreateDirectory(srcDir);
+            string zip = Path.Combine(srcDir, "sa_dream_mod-source-" + head + ".zip");
+            if (runTool("git", "archive --format=zip -o \"" + zip + "\" HEAD", s.SourceDir) != 0) throw new Exception("git archive failed");
+
+            string readme = Path.Combine(s.ReleaseDir, "README.md");
+            File.WriteAllText(readme,
+                "# sa_dream_mod — release\n\n" +
+                "Prebuilt files of our CoopAndreas build. Install and update them with `CoopAndreasManager.exe`.\n\n" +
+                "Готові файли нашої збірки CoopAndreas. Встановлення й оновлення — через `CoopAndreasManager.exe`.\n\n" +
+                "- `gta_sa.exe` 1.0 US is NOT included / НЕ входить у реліз.\n" +
+                "- Source code of this exact version (GPL-3.0): `source/`.\n" +
+                "- Based on [CoopAndreas](https://github.com/Tornamic/CoopAndreas) (GPL-3.0).\n", new UTF8Encoding(false));
+
+            string version = Manifest.Load(s.ReleaseDir).Version;
+            if (runTool("git", "add -A", s.ReleaseDir) != 0) return;
+            if (runTool("git", "commit -m \"release " + version + "\"", s.ReleaseDir) != 0) return;
+            runTool("git", "push origin HEAD:main", s.ReleaseDir);
+        }
+    }
+
     // ------------------------------------------------------------------ main window
     class MainForm : Form
     {
@@ -536,10 +801,10 @@ namespace CoopManager
         readonly object serverLogLock = new object();
 
         TabControl tabs;
-        TextBox tbGame, tbSrc, tbZip, tbNick, tbIp, tbPort, tbNick1, tbNick2, tbSerial, tbFilter, tbOutput, tbLog;
-        Label lbExe, lbMod, lbBuild, lbBackup, lbPcId, lbServer, lbRepo, lbUpdates;
-        TextBox tbRepoUrl, tbBranch;
-        RadioButton rbDist, rbBuild;
+        TextBox tbGame, tbSrc, tbZip, tbRelRepo, tbRelDir, tbNick, tbIp, tbPort, tbNick1, tbNick2, tbSerial, tbFilter, tbOutput, tbLog;
+        Label lbExe, lbMod, lbPkg, lbBackup, lbPcId, lbServer, lbDev, lbUpdates;
+        RadioButton rbPlayer, rbDev;
+        Button btnBuild, btnPublish;
         ComboBox cbLogFile;
         CheckBox chkWarn, chkFollow;
         Button btnLang;
@@ -554,7 +819,7 @@ namespace CoopManager
             installer = new Installer(settings, Log);
             Font = new Font("Segoe UI", 9.5f);
             ClientSize = new Size(900, 720);
-            MinimumSize = new Size(760, 560);
+            MinimumSize = new Size(760, 600);
             StartPosition = FormStartPosition.CenterScreen;
             try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
 
@@ -570,7 +835,7 @@ namespace CoopManager
             BuildInstallTab();
             BuildLaunchTab();
             BuildLogsTab();
-            BuildPathsTab();
+            BuildSettingsTab();
 
             ApplyTexts();
             RefreshStatus();
@@ -579,6 +844,7 @@ namespace CoopManager
             logTimer.Tick += delegate { PollLog(); };
             logTimer.Start();
             FormClosing += delegate { StopServer(); };
+            Shown += delegate { if (settings.PlayerMode) RunBusy(() => CheckUpdates()); };
         }
 
         // ---- helpers
@@ -605,7 +871,7 @@ namespace CoopManager
         }
         GroupBox Group(Control parent, string key, int x, int y, int w, int h)
         {
-            var g = new GroupBox { Location = new Point(x, y), Size = new Size(w, h) };
+            var g = new GroupBox { Location = new Point(x, y), Size = new Size(w, h), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
             Reg(g, key);
             parent.Controls.Add(g);
             return g;
@@ -650,13 +916,9 @@ namespace CoopManager
             Log("> " + exe + " " + args);
             var psi = new ProcessStartInfo(exe, args)
             {
-                WorkingDirectory = workDir,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                StandardOutputEncoding = Encoding.UTF8,
-                StandardErrorEncoding = Encoding.UTF8,
+                WorkingDirectory = workDir, UseShellExecute = false, CreateNoWindow = true,
+                RedirectStandardOutput = true, RedirectStandardError = true,
+                StandardOutputEncoding = Encoding.UTF8, StandardErrorEncoding = Encoding.UTF8,
             };
             psi.EnvironmentVariables["XMAKE_COLORTERM"] = "nocolor";
             using (var p = new Process { StartInfo = psi })
@@ -673,46 +935,38 @@ namespace CoopManager
             }
         }
 
-        static string StripAnsi(string s)
-        {
-            return System.Text.RegularExpressions.Regex.Replace(s, @"\x1B\[[0-9;]*[A-Za-z]", "");
-        }
+        static string StripAnsi(string s) { return Regex.Replace(s, @"\x1B\[[0-9;]*[A-Za-z]", ""); }
 
-        string FindXmake()
-        {
-            string p = @"C:\Program Files\xmake\xmake.exe";
-            return File.Exists(p) ? p : "xmake";
-        }
+        DevOps Dev { get { return new DevOps(settings, Log, RunTool); } }
 
         // ---- Install tab
         void BuildInstallTab()
         {
             var p = Page("tabInstall");
             var g = Group(p, "status", 8, 6, 860, 130);
-            g.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
             lbExe = Lbl(g, null, 12, 22, 830);
             lbMod = Lbl(g, null, 12, 46, 830);
-            lbBuild = Lbl(g, null, 12, 70, 830);
+            lbPkg = Lbl(g, null, 12, 70, 830);
             lbBackup = Lbl(g, null, 12, 94, 830);
 
-            var gr = Group(p, "repo", 8, 142, 860, 150);
-            gr.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-            lbRepo = Lbl(gr, null, 12, 20, 830);
-            lbUpdates = Lbl(gr, null, 12, 42, 830);
-            rbDist = new RadioButton { Location = new Point(12, 68), Size = new Size(410, 24), Checked = settings.InstallFromDist };
-            rbBuild = new RadioButton { Location = new Point(430, 68), Size = new Size(410, 24), Checked = !settings.InstallFromDist };
-            Reg(rbDist, "srcDist");
-            Reg(rbBuild, "srcBuild");
-            EventHandler srcChanged = delegate { settings.InstallFromDist = rbDist.Checked; settings.Save(); RefreshStatus(); };
-            rbDist.CheckedChanged += srcChanged;
-            gr.Controls.Add(rbDist);
-            gr.Controls.Add(rbBuild);
-            Btn(gr, "checkUpdates", 12, 104, 200, delegate { RunBusy(() => CheckUpdates(true)); });
-            Btn(gr, "updateRepo", 220, 104, 300, delegate
+            var gu = Group(p, "updates", 8, 142, 860, 150);
+            lbUpdates = Lbl(gu, null, 12, 20, 830);
+            lbDev = Lbl(gu, null, 12, 42, 830);
+            rbPlayer = new RadioButton { Location = new Point(12, 68), Size = new Size(410, 24), Checked = settings.PlayerMode };
+            rbDev = new RadioButton { Location = new Point(430, 68), Size = new Size(410, 24), Checked = !settings.PlayerMode };
+            Reg(rbPlayer, "modePlayer");
+            Reg(rbDev, "modeDev");
+            rbPlayer.CheckedChanged += delegate { settings.PlayerMode = rbPlayer.Checked; settings.Save(); RefreshStatus(); };
+            gu.Controls.Add(rbPlayer);
+            gu.Controls.Add(rbDev);
+            Btn(gu, "checkUpdates", 12, 104, 200, delegate { RunBusy(() => CheckUpdates()); });
+            Btn(gu, "update", 220, 104, 300, delegate { if (EnsureWritable()) RunBusy(() => UpdateAndInstall()); });
+            btnPublish = Btn(gu, "publish", 528, 104, 316, delegate
             {
-                if (EnsureWritable()) RunBusy(() => UpdateFromRepo());
+                RunBusy(() => Dev.Publish(url => (bool)Invoke(new Func<bool>(() =>
+                    MessageBox.Show(L.F("confirmPublish", url), Text,
+                        MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes))));
             });
-            Btn(gr, "publish", 528, 104, 316, delegate { Publish(); });
 
             int y = 302;
             Btn(p, "install", 8, y, 280, delegate { if (EnsureWritable()) RunBusy(() => installer.Install(false)); });
@@ -723,7 +977,7 @@ namespace CoopManager
                     RunBusy(() => installer.Uninstall());
             });
             y += 38;
-            Btn(p, "build", 8, y, 280, delegate { RunBusy(() => Build()); });
+            btnBuild = Btn(p, "build", 8, y, 280, delegate { RunBusy(() => Dev.Build()); });
             Btn(p, "fixPerms", 296, y, 280, delegate { EnsureWritable(); });
             Btn(p, "refresh", 584, y, 280, delegate { RefreshStatus(); });
 
@@ -738,67 +992,36 @@ namespace CoopManager
             p.Controls.Add(tbOutput);
         }
 
-        // returns number of commits we are behind origin/<branch>, -1 on error
-        int CheckUpdates(bool verbose)
+        void CheckUpdates()
         {
-            var git = new Git(settings);
-            if (!git.RepoExists) { Log(L.T("repoMissing")); return -1; }
-            if (!git.OriginIsSafe) { Log(L.T("unsafeOrigin")); return -1; }
-            string o;
-            if (git.Run("fetch origin " + settings.Branch, out o) != 0) { Log(o); return -1; }
-            int behind;
-            int.TryParse(git.Get("rev-list --count HEAD..origin/" + settings.Branch), out behind);
-            string msg = behind > 0 ? L.F("updatesAvail", behind) : L.T("upToDate");
-            if (verbose) Log(msg);
+            if (!settings.PlayerMode) return;
+            string sha;
+            var remote = new Release(settings, Log).FetchRemote(out sha);
+            string installed = installer.InstalledVersion;
+            string msg = installed == remote.Version ? L.F("upToDate", installed) : L.F("newVersion", remote.Version, installed.Length > 0 ? installed : "—");
+            Log(msg);
             BeginInvoke(new Action(() => { lbUpdates.Text = msg; }));
-            return behind;
         }
 
-        void UpdateFromRepo()
+        void UpdateAndInstall()
         {
-            var git = new Git(settings);
-            if (!git.RepoExists) { Log(L.T("repoMissing")); return; }
-            if (!git.OriginIsSafe) { Log(L.T("unsafeOrigin")); return; }
-            // local build output in dist/ is regenerated by Publish, so only source changes block the update
-            if (git.IsDirty()) { Log(L.T("dirtyTree")); return; }
-            if (RunTool("git", "pull --ff-only origin " + settings.Branch, settings.SourceDir) != 0) return;
-            if (!settings.InstallFromDist && !Build()) return;
-            installer.Install(true);
-            BuildManagerIntoDist(false);
-        }
-
-        // rebuilds the manager from tools/manager into dist/ (only when the developer publishes)
-        bool BuildManagerIntoDist(bool force)
-        {
-            if (!force) return true;
-            string cmd = Path.Combine(settings.SourceDir, @"tools\manager\build.cmd");
-            return File.Exists(cmd) && RunTool("cmd.exe", "/c \"" + cmd + "\"", Path.GetDirectoryName(cmd)) == 0;
-        }
-
-        void Publish()
-        {
-            var git = new Git(settings);
-            if (!git.RepoExists) { MessageBox.Show(L.T("repoMissing")); return; }
-            if (!git.OriginIsSafe) { MessageBox.Show(L.T("unsafeOrigin")); return; }
-            if (!File.Exists(Path.Combine(installer.BuildDir, "CoopAndreasSA.dll"))) { MessageBox.Show(L.T("buildMissing")); return; }
-            if (MessageBox.Show(L.F("confirmPublish", git.OriginUrl), Text, MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
-            RunBusy(() =>
+            if (settings.PlayerMode)
             {
-                string bin = Path.Combine(installer.DistDir, "bin");
-                Directory.CreateDirectory(bin);
-                foreach (var name in new[] { "CoopAndreasSA.dll", "proxy.dll", "LaunchCoopAndreas.exe", "LaunchCoopAndreas.exe.manifest", "server.exe" })
-                {
-                    File.Copy(Path.Combine(installer.BuildDir, name), Path.Combine(bin, name), true);
-                    Log("dist/bin/" + name);
-                }
-                if (!BuildManagerIntoDist(true)) return;
-                string head = git.Get("rev-parse --short HEAD");
-                File.WriteAllText(Path.Combine(installer.DistDir, "BUILD_INFO.txt"),
-                    "source commit: " + head + Environment.NewLine + "built: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm") + Environment.NewLine);
-                if (RunTool("git", "add dist", settings.SourceDir) != 0) return;
-                if (RunTool("git", "commit -m \"dist: build of " + head + "\"", settings.SourceDir) != 0) return;
-                RunTool("git", "push origin HEAD:" + settings.Branch, settings.SourceDir);
-            });
+                bool restart = new Release(settings, Log).Download(installer.PlayerPackageDir);
+                installer.Install(true);
+                if (restart) BeginInvoke(new Action(() => MessageBox.Show(L.T("selfUpdated"))));
+            }
+            else
+            {
+                var git = new Git(settings);
+                if (!git.RepoExists) { Log(L.T("repoMissing")); return; }
+                string origin = git.OriginUrl();
+                if (origin.Length == 0 || Git.IsUpstream(origin)) { Log(L.T("unsafeOrigin")); return; }
+                if (git.IsDirty()) { Log(L.T("dirtyTree")); return; }
+                if (RunTool("git", "pull --ff-only origin main", settings.SourceDir) != 0) return;
+                if (!Dev.Build()) return;
+                installer.Install(true);
+            }
         }
 
         bool EnsureWritable()
@@ -810,40 +1033,33 @@ namespace CoopManager
             return ok;
         }
 
-        bool Build()
-        {
-            string xm = FindXmake();
-            if (!File.Exists(Path.Combine(settings.SourceDir, @".xmake\windows\x86\xmake.conf")))
-                RunTool(xm, "f -p windows -a x86 -m release --toolchain=msvc -y", settings.SourceDir);
-            return RunTool(xm, "-y", settings.SourceDir) == 0;
-        }
-
         void RefreshStatus()
         {
             if (lbExe == null) return;
             installer = new Installer(settings, Log);
             lbExe.Text = installer.ExeState();
             lbExe.ForeColor = lbExe.Text == L.T("exeOk") ? Color.DarkGreen : Color.DarkRed;
-            if (installer.IsInstalled)
-                lbMod.Text = L.F("modInstalled", File.ReadAllLines(installer.ManifestPath).FirstOrDefault() ?? "");
-            else
-                lbMod.Text = L.T("modNotInstalled");
-            string dll = Path.Combine(installer.BinDir, "CoopAndreasSA.dll");
-            lbBuild.Text = File.Exists(dll) ? L.F("buildFound", File.GetLastWriteTime(dll).ToString("yyyy-MM-dd HH:mm") + "  (" + installer.BinDir + ")") : L.T("buildMissing");
-            var git = new Git(settings);
-            if (git.RepoExists)
+            lbMod.Text = installer.IsInstalled ? L.F("modInstalled", installer.InstalledVersion) : L.T("modNotInstalled");
+            if (settings.PlayerMode)
             {
-                lbRepo.Text = L.F("repoInfo", git.OriginUrl.Length > 0 ? git.OriginUrl : "—", git.Get("rev-parse --abbrev-ref HEAD"), git.Get("log -1 --format=%h %s"));
-                lbRepo.ForeColor = git.OriginIsSafe ? SystemColors.ControlText : Color.DarkRed;
+                var pm = Manifest.Load(installer.PlayerPackageDir);
+                lbPkg.Text = pm != null ? L.F("pkgReady", pm.Version) : L.T("pkgMissing");
             }
             else
             {
-                lbRepo.Text = L.T("repoMissing");
-                lbRepo.ForeColor = Color.DarkRed;
+                string dll = Path.Combine(installer.BuildDir, "CoopAndreasSA.dll");
+                lbPkg.Text = File.Exists(dll) ? L.F("pkgReady", "build " + File.GetLastWriteTime(dll).ToString("yyyy-MM-dd HH:mm")) : L.T("buildMissing");
             }
             lbBackup.Text = Directory.Exists(installer.BackupDir) ? L.T("backupFound") : "";
-            if (!installer.IsGameDirWritable()) { lbBackup.Text = L.T("writableNo"); lbBackup.ForeColor = Color.DarkRed; }
-            else lbBackup.ForeColor = SystemColors.ControlText;
+            lbBackup.ForeColor = SystemColors.ControlText;
+            if (Directory.Exists(settings.GameDir) && !installer.IsGameDirWritable()) { lbBackup.Text = L.T("writableNo"); lbBackup.ForeColor = Color.DarkRed; }
+
+            var git = new Git(settings);
+            bool dev = git.RepoExists;
+            rbDev.Enabled = dev;
+            btnBuild.Enabled = dev && !settings.PlayerMode;
+            btnPublish.Enabled = dev && !settings.PlayerMode;
+            lbDev.Text = dev ? L.F("devInfo", git.OriginUrl(), git.Get("rev-parse --abbrev-ref HEAD"), git.Get("log -1 --format=%h %s")) : "";
             UpdateServerLabel();
         }
 
@@ -852,7 +1068,6 @@ namespace CoopManager
         {
             var p = Page("tabLaunch");
             var gs = Group(p, "serial", 8, 6, 860, 130);
-            gs.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
             Lbl(gs, "pcid", 12, 22, 120);
             lbPcId = new Label { Location = new Point(135, 25), AutoSize = true, Font = new Font("Consolas", 10f, FontStyle.Bold) };
             gs.Controls.Add(lbPcId);
@@ -867,19 +1082,18 @@ namespace CoopManager
             gs.Controls.Add(tbSerial);
 
             var gp = Group(p, "play", 8, 142, 420, 150);
+            gp.Anchor = AnchorStyles.Top | AnchorStyles.Left;
             Lbl(gp, "nick", 12, 24, 110); tbNick = new TextBox { Location = new Point(125, 24), Width = 200, Text = settings.Nick }; gp.Controls.Add(tbNick);
             Lbl(gp, "ip", 12, 54, 110); tbIp = new TextBox { Location = new Point(125, 54), Width = 140, Text = settings.Ip }; gp.Controls.Add(tbIp);
             Lbl(gp, "port", 272, 54, 50); tbPort = new TextBox { Location = new Point(325, 54), Width = 70, Text = settings.Port.ToString() }; gp.Controls.Add(tbPort);
             Btn(gp, "launchGame", 12, 100, 200, delegate { SaveLaunchFields(); LaunchGame(0, settings.Nick, settings.Ip, -1); });
 
             var gsv = Group(p, "server", 440, 142, 428, 150);
-            gsv.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
             lbServer = Lbl(gsv, null, 12, 26, 400);
             Btn(gsv, "startServer", 12, 60, 190, delegate { StartServer(); });
             Btn(gsv, "stopServer", 212, 60, 190, delegate { StopServer(); });
 
             var gt = Group(p, "test", 8, 300, 860, 170);
-            gt.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
             Lbl(gt, "nick1", 12, 26, 120); tbNick1 = new TextBox { Location = new Point(135, 26), Width = 160, Text = settings.Nick1 }; gt.Controls.Add(tbNick1);
             Lbl(gt, "nick2", 320, 26, 120); tbNick2 = new TextBox { Location = new Point(443, 26), Width = 160, Text = settings.Nick2 }; gt.Controls.Add(tbNick2);
             Btn(gt, "launchTest", 12, 64, 280, delegate
@@ -1021,7 +1235,7 @@ namespace CoopManager
                 Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
                 BackColor = Color.FromArgb(24, 24, 28), ForeColor = Color.Gainsboro,
             };
-            tbLog.Size = new Size(856, 480);
+            tbLog.Size = new Size(856, 560);
             p.Controls.Add(tbLog);
             FillLogList();
         }
@@ -1075,7 +1289,7 @@ namespace CoopManager
         bool Matches(string line)
         {
             if (chkWarn.Checked && line.IndexOf("[warn]", StringComparison.OrdinalIgnoreCase) < 0 &&
-                line.IndexOf("[error]", StringComparison.OrdinalIgnoreCase) < 0 && line.IndexOf("[ERROR]") < 0)
+                line.IndexOf("[error]", StringComparison.OrdinalIgnoreCase) < 0)
                 return false;
             string f = tbFilter.Text;
             return f.Length == 0 || line.IndexOf(f, StringComparison.OrdinalIgnoreCase) >= 0;
@@ -1088,63 +1302,50 @@ namespace CoopManager
             tbLog.ScrollToCaret();
         }
 
-        // ---- Paths tab
-        void BuildPathsTab()
+        // ---- Settings tab
+        void BuildSettingsTab()
         {
             var p = Page("tabSettings");
             int y = 12;
-            tbGame = PathRow(p, "gameDir", ref y, settings.GameDir, true);
-            tbSrc = PathRow(p, "srcDir", ref y, settings.SourceDir, true);
-            tbZip = PathRow(p, "addZip", ref y, settings.AdditionalZip, false);
-            Lbl(p, "repoUrl", 8, y, 160);
-            tbRepoUrl = new TextBox { Location = new Point(170, y), Width = 560, Text = settings.RepoUrl };
-            p.Controls.Add(tbRepoUrl);
-            Btn(p, "clone", 740, y - 3, 110, delegate
+            tbGame = PathRow(p, "gameDir", ref y, settings.GameDir, 1);
+            tbZip = PathRow(p, "addZip", ref y, settings.AdditionalZip, 2);
+            tbRelRepo = PathRow(p, "releaseRepo", ref y, settings.ReleaseRepo, 0);
+            tbSrc = PathRow(p, "srcDir", ref y, settings.SourceDir, 1);
+            tbRelDir = PathRow(p, "releaseDir", ref y, settings.ReleaseDir, 1);
+            Btn(p, "save", 230, y + 6, 160, delegate
             {
-                SavePaths();
-                var git = new Git(settings);
-                if (git.RepoExists || settings.RepoUrl.Length == 0) return;
-                if (settings.RepoUrl.IndexOf("Tornamic/CoopAndreas", StringComparison.OrdinalIgnoreCase) >= 0) { MessageBox.Show(L.T("unsafeOrigin")); return; }
-                string parent = Path.GetDirectoryName(settings.SourceDir.TrimEnd('\\'));
-                Directory.CreateDirectory(parent);
-                RunBusy(() => RunTool("git", "clone -b " + settings.Branch + " \"" + settings.RepoUrl + "\" \"" + settings.SourceDir + "\"", parent));
+                settings.GameDir = tbGame.Text.Trim();
+                settings.AdditionalZip = tbZip.Text.Trim();
+                settings.ReleaseRepo = tbRelRepo.Text.Trim();
+                settings.SourceDir = tbSrc.Text.Trim();
+                settings.ReleaseDir = tbRelDir.Text.Trim();
+                settings.Save();
+                RefreshStatus();
+                FillLogList();
             });
-            y += 40;
-            Lbl(p, "branch", 8, y, 160);
-            tbBranch = new TextBox { Location = new Point(170, y), Width = 200, Text = settings.Branch };
-            p.Controls.Add(tbBranch);
-            y += 40;
-            Btn(p, "save", 170, y + 6, 160, delegate { SavePaths(); });
         }
 
-        void SavePaths()
+        // kind: 0 = plain text, 1 = folder, 2 = zip file or folder
+        TextBox PathRow(Control p, string key, ref int y, string value, int kind)
         {
-            settings.GameDir = tbGame.Text.Trim();
-            settings.SourceDir = tbSrc.Text.Trim();
-            settings.AdditionalZip = tbZip.Text.Trim();
-            settings.RepoUrl = tbRepoUrl.Text.Trim();
-            settings.Branch = tbBranch.Text.Trim().Length > 0 ? tbBranch.Text.Trim() : "main";
-            settings.Save();
-            RefreshStatus();
-            FillLogList();
-        }
-
-        TextBox PathRow(Control p, string key, ref int y, string value, bool folder)
-        {
-            Lbl(p, key, 8, y, 160);
-            var tb = new TextBox { Location = new Point(170, y), Width = 560, Text = value };
+            Lbl(p, key, 8, y, 220);
+            var tb = new TextBox { Location = new Point(230, y), Width = 500, Text = value };
             p.Controls.Add(tb);
-            Btn(p, "browse", 740, y - 3, 110, delegate
+            if (kind > 0)
             {
-                if (folder)
+                Btn(p, "browse", 740, y - 3, 110, delegate
                 {
-                    using (var d = new FolderBrowserDialog { SelectedPath = tb.Text }) if (d.ShowDialog() == DialogResult.OK) tb.Text = d.SelectedPath;
-                }
-                else
-                {
-                    using (var d = new OpenFileDialog { Filter = "zip|*.zip|*.*|*.*" }) if (d.ShowDialog() == DialogResult.OK) tb.Text = d.FileName;
-                }
-            });
+                    if (kind == 1)
+                    {
+                        using (var d = new FolderBrowserDialog { SelectedPath = tb.Text }) if (d.ShowDialog() == DialogResult.OK) tb.Text = d.SelectedPath;
+                    }
+                    else
+                    {
+                        using (var d = new OpenFileDialog { Filter = "zip / exe|*.zip;gta_sa.exe|*.*|*.*" })
+                            if (d.ShowDialog() == DialogResult.OK) tb.Text = d.FileName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? Path.GetDirectoryName(d.FileName) : d.FileName;
+                    }
+                });
+            }
             y += 40;
             return tb;
         }
@@ -1155,29 +1356,36 @@ namespace CoopManager
         [DllImport("kernel32.dll")]
         static extern bool AttachConsole(int pid);
 
-        // command line mode (used by scripts/automation): --install --repair --uninstall --verify
-        static int RunCli(string[] args, string command)
+        // command line mode: --install --repair --uninstall --verify --status --update --publish --assemble <dir>
+        static int RunCli(string[] args)
         {
             AttachConsole(-1);
             var settings = Settings.Load();
-            ApplyRepoArg(settings, args);
             L.Uk = false;
             Directory.CreateDirectory(Settings.AppDataDir);
             string logPath = Path.Combine(Settings.AppDataDir, "manager_cli.log");
             using (var w = new StreamWriter(logPath, false, new UTF8Encoding(false)) { AutoFlush = true })
             {
                 Action<string> log = line => { Console.WriteLine(line); w.WriteLine(line); };
+                Func<string, string, string, int> tool = (exe, a, dir) =>
+                {
+                    log("> " + exe + " " + a);
+                    var psi = new ProcessStartInfo(exe, a) { WorkingDirectory = dir, UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
+                    using (var p = Process.Start(psi))
+                    {
+                        var err = p.StandardError.ReadToEndAsync();
+                        log(p.StandardOutput.ReadToEnd().TrimEnd());
+                        p.WaitForExit();
+                        log(err.Result.TrimEnd());
+                        return p.ExitCode;
+                    }
+                };
                 var inst = new Installer(settings, log);
                 try
                 {
-                    switch (command)
+                    switch (args[0])
                     {
                         case "--install": inst.Install(false); break;
-                        case "--status":
-                            var git = new Git(settings);
-                            log("source: " + settings.SourceDir + " origin: " + git.OriginUrl + " safe: " + git.OriginIsSafe);
-                            log("bin: " + inst.BinDir + " exists: " + inst.BuildExists() + " installed: " + inst.IsInstalled);
-                            break;
                         case "--repair": inst.Repair(); break;
                         case "--uninstall": inst.Uninstall(); break;
                         case "--verify":
@@ -1185,7 +1393,23 @@ namespace CoopManager
                             foreach (var p in problems) log("! " + p);
                             log(problems.Count == 0 ? "OK" : problems.Count + " problem(s)");
                             return problems.Count == 0 ? 0 : 2;
-                        default: log("unknown command " + command); return 1;
+                        case "--status":
+                            var git = new Git(settings);
+                            log("mode: " + (settings.PlayerMode ? "player" : "developer") + "  source: " + settings.SourceDir + "  origin: " + git.OriginUrl());
+                            log("release repo: " + settings.ReleaseRepo + "  local clone: " + settings.ReleaseDir);
+                            log("installed: " + inst.IsInstalled + " version: " + inst.InstalledVersion);
+                            break;
+                        case "--update":
+                            if (settings.PlayerMode) { new Release(settings, log).Download(inst.PlayerPackageDir); inst.Install(true); }
+                            else inst.Install(true);
+                            break;
+                        case "--assemble":
+                            inst.AssembleFromBuild(args.Length > 1 ? args[1] : inst.DevPackageDir, true);
+                            break;
+                        case "--publish":
+                            new DevOps(settings, log, tool).Publish(url => { log("publishing to " + url); return true; });
+                            break;
+                        default: log("unknown command " + args[0]); return 1;
                     }
                 }
                 catch (Exception ex) { log("ERROR: " + ex.Message); return 1; }
@@ -1193,58 +1417,12 @@ namespace CoopManager
             return 0;
         }
 
-        // finds the git repo root that contains the given directory (the exe lives in <repo>\dist)
-        static string FindRepoRoot(string dir)
-        {
-            for (var d = new DirectoryInfo(dir); d != null; d = d.Parent)
-                if (Directory.Exists(Path.Combine(d.FullName, ".git"))) return d.FullName;
-            return null;
-        }
-
-        static string[] StripRepoArg(string[] args)
-        {
-            var list = args.ToList();
-            int i = list.IndexOf("--repo");
-            if (i >= 0) list.RemoveRange(i, Math.Min(2, list.Count - i));
-            return list.ToArray();
-        }
-
-        static void ApplyRepoArg(Settings settings, string[] args)
-        {
-            int i = Array.IndexOf(args, "--repo");
-            if (i >= 0 && i + 1 < args.Length && settings.SourceDir != args[i + 1])
-            {
-                settings.SourceDir = args[i + 1];
-                settings.Save();
-            }
-        }
-
         [STAThread]
         static int Main(string[] args)
         {
-            // when started from the repo (dist\CoopAndreasManager.exe) run a copy from %LOCALAPPDATA%,
-            // otherwise `git pull` could not replace the running exe during an update
-            string exe = Application.ExecutablePath;
-            string repo = FindRepoRoot(Path.GetDirectoryName(exe));
-            if (repo != null && Array.IndexOf(args, "--repo") < 0)
-            {
-                Directory.CreateDirectory(Settings.AppDataDir);
-                string copy = Path.Combine(Settings.AppDataDir, "CoopAndreasManager.exe");
-                try
-                {
-                    File.Copy(exe, copy, true);
-                    var rest = string.Join(" ", args.Select(a => "\"" + a + "\""));
-                    var p = Process.Start(new ProcessStartInfo(copy, "--repo \"" + repo + "\" " + rest) { UseShellExecute = false });
-                    if (args.Length > 0) { p.WaitForExit(); return p.ExitCode; }
-                    return 0;
-                }
-                catch (IOException) { } // a copy is already running: fall through and run in place
-            }
-
-            var cmdArgs = StripRepoArg(args);
-            if (cmdArgs.Length > 0) return RunCli(args, cmdArgs[0]);
-            var settings = Settings.Load();
-            ApplyRepoArg(settings, args);
+            // leftover from a self-update
+            try { File.Delete(Application.ExecutablePath + ".old"); } catch { }
+            if (args.Length > 0) return RunCli(args);
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
             Application.Run(new MainForm());
@@ -1252,4 +1430,3 @@ namespace CoopManager
         }
     }
 }
-
