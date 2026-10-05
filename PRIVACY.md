@@ -8,7 +8,7 @@ SA Dream Mod нічого не збирає, не відстежує і не в�
   The server keeps no logs beyond its own console log on the host's PC.
 * **No beta keys, no PC IDs, no accounts.** The upstream beta key system (a key bound to a PC ID handed out by a Discord bot)
   was removed.
-* **No Discord Rich Presence**, no analytics, no upload of crash reports.
+* **No Discord Rich Presence**, no analytics; crash reports are sent only with your consent (see below).
 
 ## Crash reports / Звіти про збої
 When the game or the server crashes, a report (`*.log`) and a small memory dump (`*.dmp`) are saved **only on your PC** in
