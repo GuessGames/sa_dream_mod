@@ -258,7 +258,10 @@ PACKET_HANDLER(ePacketType::REBUILD_PLAYER, Packets::Players::RebuildPlayer* pRe
 
         pNetworkPlayer->m_pPedClothesDesc = pRebuildPlayer->clothesDesc;
 
-        if (auto pPlayerPed = pNetworkPlayer->m_pPed)
+        // his ped can be gone or being recreated (respawn): the look is kept in m_pPedClothesDesc and applied on creation
+        auto pPlayerPed = pNetworkPlayer->m_pPed;
+        if (pPlayerPed && CPools::ms_pPedPool->IsObjectValid(pPlayerPed) && pPlayerPed->m_pPlayerData &&
+            pPlayerPed->m_pPlayerData->m_pPedClothesDesc)
         {
             *pPlayerPed->m_pPlayerData->m_pPedClothesDesc = pRebuildPlayer->clothesDesc;
             if (pPlayerPed->m_pRwClump)

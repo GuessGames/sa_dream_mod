@@ -81,23 +81,21 @@ void WriteBacktrace(CONTEXT* exceptionContext) {
             break;
         }
 
+        DWORD pc = (DWORD)stackFrame.AddrPC.Offset;
         HMODULE baseAddress = NULL;
         GetModuleHandleEx(
             GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-            (LPCTSTR)symbol->Address,
+            (LPCTSTR)pc,
             &baseAddress);
 
         char moduleName[268];
         GetModuleName(baseAddress, moduleName);
 
-        if (SymFromAddr(process, stackFrame.AddrPC.Offset, 0, symbol)) 
-        {
-            WriteDumpf("   0x%p: %s in %s (+0x%x) (0x%p)\r\n", (void*)symbol->Address, symbol->Name, moduleName, (DWORD)symbol->Address - (DWORD)baseAddress, stackFrame.AddrPC.Offset);
-        }
-        else 
-        {
-            WriteDumpf("   0x%p: sub_%p in %s (+0x%x)\r\n", (void*)symbol->Address, (void*)stackFrame.AddrPC.Offset, moduleName, (DWORD)symbol->Address - (DWORD)baseAddress);
-        }
+        DWORD64 displacement = 0;
+        if (SymFromAddr(process, stackFrame.AddrPC.Offset, &displacement, symbol))
+            WriteDumpf("   0x%08X in %s (+0x%08X) %s+0x%X\r\n", pc, moduleName, pc - (DWORD)baseAddress, symbol->Name, (DWORD)displacement);
+        else
+            WriteDumpf("   0x%08X in %s (+0x%08X)\r\n", pc, moduleName, pc - (DWORD)baseAddress);
     }
 
     free(symbol);
