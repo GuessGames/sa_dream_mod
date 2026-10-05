@@ -150,6 +150,10 @@ namespace CoopManager
             {"crashGame", new[]{"Гра", "The game"}},
             {"crashServer", new[]{"Сервер", "The server"}},
             {"crashAsk", new[]{"{0} аварійно завершилась ({1}).\n\nНадіслати звіт розробнику, щоб це виправили? Відкриється сторінка GitHub із заповненим звітом — натисніть «Submit new issue» (потрібен акаунт GitHub).\n\nПовний звіт також скопійовано в буфер обміну: якщо щось обрізано, вставте його в поле.", "{0} crashed ({1}).\n\nSend the report to the developer so it gets fixed? A GitHub page with the filled-in report opens — press \"Submit new issue\" (a GitHub account is needed).\n\nThe full report was also copied to the clipboard: paste it into the field if anything is cut."}},
+            {"crashAutoAsk", new[]{"{0} аварійно завершилась ({1}).\n\nНадсилати звіти про збої розробнику автоматично? Так їх швидше виправлять.\n\nНадсилається лише технічний звіт гри (версія, місце помилки, стек, останні рядки логу мода — там можуть бути ніки гравців) і невеликий дамп пам'яті гри. Звіти зберігаються в закритому сховищі розробника, публічно не видні.\n\n«Так» — надсилати автоматично завжди, «Ні» — питати щоразу.", "{0} crashed ({1}).\n\nSend crash reports to the developer automatically? They get fixed faster.\n\nOnly the technical report of the game is sent (versions, the error location, the stack, the last lines of the mod's log, which may contain player nicknames) and a small memory dump of the game. Reports are kept in the developer's private storage, not public.\n\n\"Yes\" = always send automatically, \"No\" = ask every time."}},
+            {"crashSending", new[]{"Надсилаю звіт про збій…", "Sending the crash report…"}},
+            {"crashSent", new[]{"Звіт про збій надіслано розробнику — дякуємо!", "The crash report was sent to the developer — thank you!"}},
+            {"crashSendLater", new[]{"Звіт про збій не вдалося надіслати, спробую пізніше", "Could not send the crash report, will retry later"}},
             {"crashLogged", new[]{"Новий звіт про збій: {0} (наглядач за крашами розбере його)", "New crash report: {0} (the crash watcher will analyze it)"}},
             {"pWorking", new[]{"Зачекайте…", "Please wait…"}},
             {"pReady", new[]{"Готово", "Ready"}},
@@ -198,6 +202,7 @@ namespace CoopManager
         public string Nick1 = "Tester1";
         public string Nick2 = "Tester2";
         public long LastCrashSeen = 0;
+        public int AutoSendCrashes = -1; // -1 not asked yet, 1 send automatically, 0 ask every time
 
         public static string AppDataDir { get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CoopAndreasManager"); } }
         static string FilePath { get { return Path.Combine(AppDataDir, Program.IsPlayerEdition ? "CoopLauncher.ini" : "CoopManager.ini"); } }
@@ -232,6 +237,7 @@ namespace CoopManager
                         case "Nick1": s.Nick1 = v; break;
                         case "Nick2": s.Nick2 = v; break;
                         case "LastCrashSeen": long.TryParse(v, out s.LastCrashSeen); break;
+                        case "AutoSendCrashes": int.TryParse(v, out s.AutoSendCrashes); break;
                     }
                 }
             }
@@ -319,6 +325,7 @@ namespace CoopManager
             sb.AppendLine("Nick1=" + Nick1);
             sb.AppendLine("Nick2=" + Nick2);
             sb.AppendLine("LastCrashSeen=" + LastCrashSeen);
+            sb.AppendLine("AutoSendCrashes=" + AutoSendCrashes);
             Directory.CreateDirectory(AppDataDir);
             File.WriteAllText(FilePath, sb.ToString(), new UTF8Encoding(false));
         }
@@ -954,6 +961,12 @@ namespace CoopManager
     static class CrashReports
     {
         public const string IssueRepo = "GuessGames/sa_dream_mod";
+        // tools/crash-relay: a Cloudflare Worker that stores reports in the developer's private repository (the GitHub
+        // token is only in the worker). Empty = not deployed yet: reports go the manual way (a prefilled GitHub issue).
+        public const string RelayUrl = "";
+        const string RelayAppKey = "sadream-crash-v1";
+        static readonly object sendLock = new object();
+        static string PendingPath { get { return Path.Combine(Settings.AppDataDir, "crash_pending.txt"); } }
 
         public static string Dir(Settings s) { return Path.Combine(s.GameDir, "CoopAndreas_crashes"); }
 
@@ -1015,21 +1028,115 @@ namespace CoopManager
                    "&body=" + Uri.EscapeDataString(body);
         }
 
-        // player launcher: asks about the newest new report
-        public static void CheckAndOffer(Form owner, Settings s, Installer installer)
+        // player launcher: new reports are sent automatically (after asking once) or offered as a GitHub issue
+        public static void CheckAndOffer(Form owner, Settings s, Installer installer, Action<string> status)
         {
             List<FileInfo> fresh;
             try { fresh = TakeNew(s); } catch { return; }
-            if (fresh.Count == 0) return;
+            string version = installer.InstalledVersion;
+            if (fresh.Count == 0)
+            {
+                if (RelayUrl.Length > 0 && s.AutoSendCrashes == 1) SendPendingAsync(s, version, status); // retry old ones
+                return;
+            }
             var f = fresh.Last();
+            string who = f.Name.StartsWith("server_") ? L.T("crashServer") : L.T("crashGame");
+            string when = f.LastWriteTime.ToString("yyyy-MM-dd HH:mm");
+
+            if (RelayUrl.Length > 0 && s.AutoSendCrashes == -1)
+            {
+                s.AutoSendCrashes = MessageBox.Show(owner, L.F("crashAutoAsk", who, when), L.T("crashTitle"),
+                    MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes ? 1 : 0;
+                s.Save();
+                if (s.AutoSendCrashes == 0) return; // "No" also means: not this one
+            }
+            if (RelayUrl.Length > 0 && s.AutoSendCrashes == 1)
+            {
+                try { File.AppendAllLines(PendingPath, fresh.Select(x => x.FullName)); } catch { }
+                SendPendingAsync(s, version, status);
+                return;
+            }
+
             string text;
             try { text = File.ReadAllText(f.FullName); } catch { return; }
-            string who = f.Name.StartsWith("server_") ? L.T("crashServer") : L.T("crashGame");
-            if (MessageBox.Show(owner, L.F("crashAsk", who, f.LastWriteTime.ToString("yyyy-MM-dd HH:mm")), L.T("crashTitle"),
-                    MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes)
+            if (MessageBox.Show(owner, L.F("crashAsk", who, when), L.T("crashTitle"), MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes)
                 return;
             try { Clipboard.SetText(text); } catch { }
-            try { Process.Start(IssueUrl(f, text, installer.InstalledVersion)); } catch { }
+            try { Process.Start(IssueUrl(f, text, version)); } catch { }
+        }
+
+        // sends every queued report in the background; the ones that fail stay queued for the next start
+        static void SendPendingAsync(Settings s, string version, Action<string> status)
+        {
+            string nick = s.Nick;
+            var t = new Thread(() =>
+            {
+                lock (sendLock)
+                {
+                    List<string> pending;
+                    try { pending = File.Exists(PendingPath) ? File.ReadAllLines(PendingPath).Where(l => l.Trim().Length > 0).Distinct().ToList() : new List<string>(); }
+                    catch { return; }
+                    if (pending.Count == 0) return;
+                    var left = new List<string>();
+                    bool sent = false;
+                    foreach (var path in pending)
+                    {
+                        if (!File.Exists(path)) continue;
+                        if (status != null) status(L.T("crashSending"));
+                        if (Upload(path, nick, version)) sent = true; else left.Add(path);
+                    }
+                    try { File.WriteAllLines(PendingPath, left); } catch { }
+                    if (status != null) status(left.Count == 0 ? (sent ? L.T("crashSent") : "") : L.T("crashSendLater"));
+                }
+            });
+            t.IsBackground = true;
+            t.Start();
+        }
+
+        static string Js(string v)
+        {
+            var sb = new StringBuilder("\"");
+            foreach (char c in v ?? "")
+            {
+                switch (c)
+                {
+                    case '"': sb.Append("\\\""); break;
+                    case '\\': sb.Append("\\\\"); break;
+                    case '\n': sb.Append("\\n"); break;
+                    case '\r': sb.Append("\\r"); break;
+                    case '\t': sb.Append("\\t"); break;
+                    default:
+                        if (c < 0x20) sb.AppendFormat("\\u{0:x4}", (int)c); else sb.Append(c);
+                        break;
+                }
+            }
+            return sb.Append('"').ToString();
+        }
+
+        static bool Upload(string path, string nick, string version)
+        {
+            try
+            {
+                string log = File.ReadAllText(path);
+                if (log.Length > 500000) log = log.Substring(0, 500000);
+                string dmp = Path.ChangeExtension(path, ".dmp"), dump = "";
+                if (File.Exists(dmp) && new FileInfo(dmp).Length <= 20 * 1024 * 1024) dump = Convert.ToBase64String(File.ReadAllBytes(dmp));
+                string name = Path.GetFileName(path);
+                string body = "{\"app\":\"sa-dream-mod\",\"kind\":" + Js(name.StartsWith("server_") ? "server" : "game") +
+                              ",\"file\":" + Js(name) + ",\"release\":" + Js(version) + ",\"nick\":" + Js(nick) +
+                              ",\"log\":" + Js(log) + ",\"dump\":" + Js(dump) + "}";
+                ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
+                var req = (HttpWebRequest)WebRequest.Create(RelayUrl);
+                req.Method = "POST";
+                req.ContentType = "application/json";
+                req.Headers["x-app-key"] = RelayAppKey;
+                req.Timeout = 120000;
+                byte[] data = Encoding.UTF8.GetBytes(body);
+                req.ContentLength = data.Length;
+                using (var st = req.GetRequestStream()) st.Write(data, 0, data.Length);
+                using (var resp = (HttpWebResponse)req.GetResponse()) return resp.StatusCode == HttpStatusCode.OK;
+            }
+            catch { return false; }
         }
     }
 
@@ -2478,10 +2585,10 @@ namespace CoopManager
             LoadArt(settings.GameDir, 12000);
             ApplyTexts();
             RefreshState();
-            Shown += delegate { RunBusy(CheckUpdates); CrashReports.CheckAndOffer(this, settings, installer); };
+            Shown += delegate { RunBusy(CheckUpdates); CrashReports.CheckAndOffer(this, settings, installer, SetStatus); };
             // a crash while the launcher stays open (the game was started from here)
             var crashTimer = new System.Windows.Forms.Timer { Interval = 15000 };
-            crashTimer.Tick += delegate { if (!busy) CrashReports.CheckAndOffer(this, settings, installer); };
+            crashTimer.Tick += delegate { if (!busy) CrashReports.CheckAndOffer(this, settings, installer, SetStatus); };
             crashTimer.Start();
             FormClosing += delegate { SaveFields(); };
         }

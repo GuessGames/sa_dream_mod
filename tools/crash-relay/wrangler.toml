@@ -1,0 +1,9 @@
+name = "sa-dream-crash-relay"
+main = "worker.js"
+compatibility_date = "2026-10-01"
+
+[vars]
+# the private repository that receives the reports
+REPO = "GuessGames/sa_dream_crashes"
+# not a secret (it is inside the public launcher): it only keeps random scanners away
+APP_KEY = "sadream-crash-v1"

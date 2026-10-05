@@ -8,7 +8,8 @@ developer PC (every 30 minutes while the Claude app is open); this file is its p
 | Source | What | How it gets here |
 |---|---|---|
 | Developer PC | `D:\Grand Theft Auto San Andreas\CoopAndreas_crashes\*.log` + `*.dmp` (game) and `server_*.log/.dmp` (server) | written by the crash handlers |
-| Friends' PCs | GitHub issues titled `[crash] …` in **GuessGames/sa_dream_mod** | the launcher offers to send a new report as a prefilled issue |
+| Friends' PCs (automatic) | private repo **GuessGames/sa_dream_crashes**, cloned to `D:\CoopAndreasDev\crash-reports`: `reports/<day>/<release>/<id>/report.log` + `report.dmp` | the launcher uploads through `tools/crash-relay` (Cloudflare Worker) |
+| Friends' PCs (manual) | GitHub issues titled `[crash] …` in **GuessGames/sa_dream_mod** | when automatic sending is off or not deployed, the launcher offers a prefilled issue |
 
 Read issues without a token: `curl -s "https://api.github.com/repos/GuessGames/sa_dream_mod/issues?state=open&per_page=50"` and keep
 the ones whose title starts with `[crash]` (the label is only set when the reporter may set labels). The issue body
@@ -22,7 +23,10 @@ holds the summary (exception, backtrace, release, last log lines); there is no m
 
 ## Procedure
 
-1. List new reports (files and issues not in `processed.txt`). Nothing new → stop, write nothing.
+1. Update the private reports: `git -C D:\CoopAndreasDev\crash-reports pull` (clone
+   `https://github.com/GuessGames/sa_dream_crashes.git` there if missing; skip silently if it does not exist yet).
+   List new reports (files, `crash-reports/reports/**/report.log` by their relative path, and issues not in
+   `processed.txt`). Nothing new → stop, write nothing.
 2. Symbolize each: `python D:\CoopAndreasDev\src\tools\crash\analyze.py <report.log>`.
    It uses `D:\CoopAndreasDev\symbols\<release>\` (PDBs archived by every publish) and the `.dmp` next to the log
    (validated return addresses of the whole stack). For an issue, save the body to a temp `.log` file first.

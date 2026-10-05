@@ -15,9 +15,13 @@ When the game or the server crashes, a report (`*.log`) and a small memory dump 
 `<game folder>\CoopAndreas_crashes`. They contain technical data: versions, the error address, registers, the call stack,
 loaded modules, the last lines of the mod's log (nicknames of players and positions can appear there).
 
-The launcher may **ask** you to send a new report. Only if you agree, a GitHub page opens with the report filled in, and
-it is published only when **you** press "Submit new issue" with your own GitHub account. You can review and edit it first.
-Nothing is sent automatically.
+The first time the game crashes, the launcher **asks** whether reports may be sent automatically.
+* **Yes:** from then on the launcher sends each new report (the `.log` and the small `.dmp`, plus your nickname and the mod
+  version) to the developer's **private** storage. It is not published anywhere. You can turn it off by setting
+  `AutoSendCrashes=0` in `%LOCALAPPDATA%\CoopAndreasManager\CoopLauncher.ini`.
+* **No:** the launcher asks each time; if you agree, a GitHub page opens with the report filled in, and it is published
+  only when **you** press "Submit new issue" with your own GitHub account.
+Nothing is sent without your consent.
 
 ## The launcher / Лаунчер
 * Downloads the mod only from the public release repository on GitHub (`GuessGames/sa_dream_mod_coop`).
