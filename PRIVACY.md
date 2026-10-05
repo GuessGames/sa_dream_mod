@@ -15,7 +15,7 @@ When the game or the server crashes, a report (`*.log`) and a small memory dump 
 `<game folder>\CoopAndreas_crashes`. They contain technical data: versions, the error address, registers, the call stack,
 loaded modules, the last lines of the mod's log (nicknames of players and positions can appear there).
 
-The first time the game crashes, the launcher **asks** whether reports may be sent automatically.
+The first time the launcher starts, it **asks** whether crash reports may be sent automatically.
 * **Yes:** from then on the launcher sends each new report (the `.log` and the small `.dmp`, plus your nickname and the mod
   version) to the developer's **private** storage. It is not published anywhere. You can turn it off by setting
   `AutoSendCrashes=0` in `%LOCALAPPDATA%\CoopAndreasManager\CoopLauncher.ini`.

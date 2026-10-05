@@ -151,6 +151,7 @@ namespace CoopManager
             {"crashServer", new[]{"Сервер", "The server"}},
             {"crashAsk", new[]{"{0} аварійно завершилась ({1}).\n\nНадіслати звіт розробнику, щоб це виправили? Відкриється сторінка GitHub із заповненим звітом — натисніть «Submit new issue» (потрібен акаунт GitHub).\n\nПовний звіт також скопійовано в буфер обміну: якщо щось обрізано, вставте його в поле.", "{0} crashed ({1}).\n\nSend the report to the developer so it gets fixed? A GitHub page with the filled-in report opens — press \"Submit new issue\" (a GitHub account is needed).\n\nThe full report was also copied to the clipboard: paste it into the field if anything is cut."}},
             {"crashAutoAsk", new[]{"{0} аварійно завершилась ({1}).\n\nНадсилати звіти про збої розробнику автоматично? Так їх швидше виправлять.\n\nНадсилається лише технічний звіт гри (версія, місце помилки, стек, останні рядки логу мода — там можуть бути ніки гравців) і невеликий дамп пам'яті гри. Звіти зберігаються в закритому сховищі розробника, публічно не видні.\n\n«Так» — надсилати автоматично завжди, «Ні» — питати щоразу.", "{0} crashed ({1}).\n\nSend crash reports to the developer automatically? They get fixed faster.\n\nOnly the technical report of the game is sent (versions, the error location, the stack, the last lines of the mod's log, which may contain player nicknames) and a small memory dump of the game. Reports are kept in the developer's private storage, not public.\n\n\"Yes\" = always send automatically, \"No\" = ask every time."}},
+            {"crashConsent", new[]{"Надсилати звіти про збої розробнику автоматично?\n\nЯкщо гра чи сервер аварійно завершаться, лаунчер сам надішле технічний звіт (версія, місце помилки, стек, останні рядки логу мода — там можуть бути ніки гравців) і невеликий дамп пам'яті гри. Так збої виправлять швидше.\n\nЗвіти зберігаються в закритому сховищі розробника, публічно не видні. Більше нічого не збирається.\n\n«Так» — надсилати автоматично, «Ні» — питати при кожному збої.", "Send crash reports to the developer automatically?\n\nIf the game or the server crashes, the launcher sends the technical report (versions, the error location, the stack, the last lines of the mod's log, which may contain player nicknames) and a small memory dump of the game. Crashes get fixed faster this way.\n\nReports are kept in the developer's private storage, not public. Nothing else is collected.\n\n\"Yes\" = send automatically, \"No\" = ask on every crash."}},
             {"crashSending", new[]{"Надсилаю звіт про збій…", "Sending the crash report…"}},
             {"crashSent", new[]{"Звіт про збій надіслано розробнику — дякуємо!", "The crash report was sent to the developer — thank you!"}},
             {"crashSendLater", new[]{"Звіт про збій не вдалося надіслати, спробую пізніше", "Could not send the crash report, will retry later"}},
@@ -1026,6 +1027,15 @@ namespace CoopManager
                           Summary(text, 2500) + "\n```\n\n(The full report is in the clipboard of the reporter.)";
             return "https://github.com/" + IssueRepo + "/issues/new?labels=crash&title=" + Uri.EscapeDataString(title) +
                    "&body=" + Uri.EscapeDataString(body);
+        }
+
+        // asked once, right when the launcher starts for the first time (not only after the first crash)
+        public static void AskConsentIfNeeded(Form owner, Settings s)
+        {
+            if (RelayUrl.Length == 0 || s.AutoSendCrashes != -1) return;
+            s.AutoSendCrashes = MessageBox.Show(owner, L.T("crashConsent"), L.T("crashTitle"),
+                MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes ? 1 : 0;
+            s.Save();
         }
 
         // player launcher: new reports are sent automatically (after asking once) or offered as a GitHub issue
@@ -2585,7 +2595,12 @@ namespace CoopManager
             LoadArt(settings.GameDir, 12000);
             ApplyTexts();
             RefreshState();
-            Shown += delegate { RunBusy(CheckUpdates); CrashReports.CheckAndOffer(this, settings, installer, SetStatus); };
+            Shown += delegate
+            {
+                RunBusy(CheckUpdates);
+                CrashReports.AskConsentIfNeeded(this, settings);
+                CrashReports.CheckAndOffer(this, settings, installer, SetStatus);
+            };
             // a crash while the launcher stays open (the game was started from here)
             var crashTimer = new System.Windows.Forms.Timer { Interval = 15000 };
             crashTimer.Tick += delegate { if (!busy) CrashReports.CheckAndOffer(this, settings, installer, SetStatus); };
