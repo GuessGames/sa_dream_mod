@@ -963,7 +963,7 @@ namespace CoopManager
         public const string IssueRepo = "GuessGames/sa_dream_mod";
         // tools/crash-relay: a Cloudflare Worker that stores reports in the developer's private repository (the GitHub
         // token is only in the worker). Empty = not deployed yet: reports go the manual way (a prefilled GitHub issue).
-        public const string RelayUrl = "";
+        public const string RelayUrl = "https://sa-dream-crash-relay.sacoop.workers.dev/report";
         const string RelayAppKey = "sadream-crash-v1";
         static readonly object sendLock = new object();
         static string PendingPath { get { return Path.Combine(Settings.AppDataDir, "crash_pending.txt"); } }
