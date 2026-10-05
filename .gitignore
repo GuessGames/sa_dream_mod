@@ -17,3 +17,6 @@ tools/manager/*.log
 
 # Rockstar's original vorbisFile.dll: never in the repository (the installer recreates it from the player's game)
 dist/additional/vorbisHooked.dll
+
+# local wrangler state (tools/crash-relay)
+.wrangler/
