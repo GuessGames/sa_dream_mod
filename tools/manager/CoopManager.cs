@@ -93,12 +93,6 @@ namespace CoopManager
             {"notPushed", new[]{"Спочатку запуште коміти в репозиторій з кодом: реліз має відповідати опублікованому коду.", "Push your commits to the source repository first: the release must match the published source."}},
             {"releaseDirMissing", new[]{"Локальна копія релізного репозиторію не знайдена: {0}", "Local release clone not found: {0}"}},
             {"selfUpdated", new[]{"Менеджер оновлено — перезапустіть його.", "The manager was updated — please restart it."}},
-            {"serial", new[]{"Серійний ключ бета-тесту", "Beta test serial key"}},
-            {"pcid", new[]{"ID вашого ПК:", "Your PC ID:"}},
-            {"copyCmd", new[]{"Копіювати команду", "Copy command"}},
-            {"discord", new[]{"Відкрити Discord", "Open Discord"}},
-            {"serialHint", new[]{"Надішліть команду в будь-який канал Discord-сервера CoopAndreas, бот видасть ключ. Вставте його нижче.", "Send the command in any channel of the CoopAndreas Discord server, the bot replies with a key. Paste it below."}},
-            {"serialKey", new[]{"Ключ:", "Key:"}},
             {"play", new[]{"Звичайна гра", "Normal play"}},
             {"nick", new[]{"Нікнейм:", "Nickname:"}},
             {"ip", new[]{"IP сервера:", "Server IP:"}},
@@ -121,7 +115,6 @@ namespace CoopManager
             {"follow", new[]{"Автопрокрутка", "Auto-scroll"}},
             {"openFolder", new[]{"Відкрити теку логів", "Open logs folder"}},
             {"reload", new[]{"Перечитати", "Reload"}},
-            {"needSerial", new[]{"Спочатку вкажіть серійний ключ на вкладці «Запуск».", "Enter the serial key on the Launch tab first."}},
             {"needInstall", new[]{"Мод не встановлено. Спочатку встановіть його.", "The mod is not installed. Install it first."}},
             {"confirmUninstall", new[]{"Видалити CoopAndreas і відновити оригінальні файли гри?", "Remove CoopAndreas and restore the original game files?"}},
             {"done", new[]{"Готово.", "Done."}},
@@ -150,9 +143,6 @@ namespace CoopManager
             {"pOffline", new[]{"Не вдалося перевірити оновлення", "Could not check for updates"}},
             {"pPlayer", new[]{"Гравець", "Player"}},
             {"pIpHint", new[]{"IP дає той, хто запускає сервер", "The server host gives you the IP"}},
-            {"pKey", new[]{"Ключ бета-тесту", "Beta key"}},
-            {"pHowKey", new[]{"Як отримати?", "How to get it?"}},
-            {"pHowKeyText", new[]{"1. Команду «{0}» скопійовано в буфер обміну.\n2. Зараз відкриється Discord CoopAndreas — вставте команду в будь-який канал.\n3. Бот надішле ключ — вставте його в поле «Ключ».", "1. The command \"{0}\" was copied to the clipboard.\n2. The CoopAndreas Discord opens now — paste the command into any channel.\n3. The bot sends you a key — paste it into the \"Key\" field."}},
             {"pPlay", new[]{"ГРАТИ", "PLAY"}},
             {"pLogs", new[]{"Логи", "Logs"}},
             {"pRepair", new[]{"Виправити", "Repair"}},
@@ -511,7 +501,7 @@ namespace CoopManager
             Directory.CreateDirectory(Path.Combine(target, "bin"));
             Directory.CreateDirectory(Path.Combine(target, "additional"));
             Directory.CreateDirectory(Path.Combine(target, "scm"));
-            foreach (var name in new[] { "CoopAndreasSA.dll", "proxy.dll", "LaunchCoopAndreas.exe", "LaunchCoopAndreas.exe.manifest", "server.exe" })
+            foreach (var name in new[] { "CoopAndreasSA.dll", "proxy.dll", "server.exe" })
                 File.Copy(Path.Combine(BuildDir, name), Path.Combine(target, "bin", name), true);
             // the release is public: Rockstar files (gta_sa.exe, the original vorbisFile.dll) are never included,
             // vorbisHooked.dll is recreated from the player's own game and gta_sa.exe comes from his archive
@@ -547,8 +537,6 @@ namespace CoopManager
             }
             map["eax.dll"] = Path.Combine(pkg, @"bin\proxy.dll");
             map["CoopAndreasSA.dll"] = Path.Combine(pkg, @"bin\CoopAndreasSA.dll");
-            map["LaunchCoopAndreas.exe"] = Path.Combine(pkg, @"bin\LaunchCoopAndreas.exe");
-            map["LaunchCoopAndreas.exe.manifest"] = Path.Combine(pkg, @"bin\LaunchCoopAndreas.exe.manifest");
             map[@"CoopAndreas\main.scm"] = Path.Combine(pkg, @"scm\main.scm");
             map[@"CoopAndreas\script.img"] = Path.Combine(pkg, @"scm\script.img");
             map[@"CoopAndreasServer\server.exe"] = Path.Combine(pkg, @"bin\server.exe");
@@ -609,7 +597,21 @@ namespace CoopManager
                 else log("! vorbisHooked.dll not found: the original vorbisFile.dll of the game is missing");
             }
 
-            // 4. copy files
+            // 4. files of the previous install that are not part of the mod anymore (e.g. the old LaunchCoopAndreas.exe)
+            if (File.Exists(ManifestPath))
+            {
+                foreach (var line in File.ReadAllLines(ManifestPath))
+                {
+                    int bar = line.IndexOf('|');
+                    if (line.StartsWith("#") || bar <= 0) continue;
+                    string name = line.Substring(0, bar), kind = line.Substring(bar + 1);
+                    if (kind == "config" || kind == "generated" || map.ContainsKey(name)) continue;
+                    string old = Path.Combine(s.GameDir, name);
+                    if (File.Exists(old)) { File.Delete(old); log("removed (no longer part of the mod): " + name); }
+                }
+            }
+
+            // 5. copy files
             var manifest = new List<string>();
             foreach (var kv in map)
             {
@@ -627,7 +629,7 @@ namespace CoopManager
                 if (!kv.Key.Equals("gta_sa.exe", StringComparison.OrdinalIgnoreCase)) manifest.Add(kv.Key + "|" + srcHash);
             }
 
-            // 5. default ini files, never overwritten
+            // 6. default ini files, never overwritten
             foreach (var f in Directory.GetFiles(Path.Combine(pkg, "additional"), "*.ini"))
             {
                 string dst = Path.Combine(s.GameDir, Path.GetFileName(f));
@@ -861,40 +863,6 @@ namespace CoopManager
         public bool IsDirty(string workDir = null) { return Get("status --porcelain", workDir).Trim().Length > 0; }
     }
 
-    // ------------------------------------------------------------------ serial / pc id (same as launcher/pcid.h)
-    static class Serial
-    {
-        const string Key = @"Software\CoopAndreas";
-
-        public static string GetPcId()
-        {
-            using (var k = Registry.CurrentUser.CreateSubKey(Key))
-            {
-                string pcid = k.GetValue("pcid") as string;
-                if (string.IsNullOrEmpty(pcid))
-                {
-                    pcid = Guid.NewGuid().ToString("D").ToUpperInvariant();
-                    k.SetValue("pcid", pcid);
-                }
-                using (var md5 = MD5.Create())
-                {
-                    byte[] h = md5.ComputeHash(Encoding.ASCII.GetBytes(pcid));
-                    return BitConverter.ToString(h, 0, 4).Replace("-", "");
-                }
-            }
-        }
-
-        public static string GetSerial()
-        {
-            using (var k = Registry.CurrentUser.CreateSubKey(Key)) return (k.GetValue("Serialkey") as string) ?? "";
-        }
-
-        public static void SetSerial(string v)
-        {
-            using (var k = Registry.CurrentUser.CreateSubKey(Key)) k.SetValue("Serialkey", v ?? "");
-        }
-    }
-
     static class Native
     {
         [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
@@ -918,17 +886,15 @@ namespace CoopManager
         // profile 0 = normal play; windowIndex 0/1 = side-by-side placement, -1 = none; returns the logged command line
         public static string Launch(Settings s, int profile, string nick, string ip, int windowIndex, bool autoConnect, string extraArgs = "")
         {
-            string serial = Serial.GetSerial();
-            if (string.IsNullOrEmpty(serial)) throw new Exception(L.T("needSerial"));
             WriteClientConfig(s, profile, nick, ip);
 
-            string args = "--coop -id " + Serial.GetPcId() + " -serial " + serial;
+            string args = "--coop";
             if (profile > 0) args += " -profile " + profile;
             if (windowIndex >= 0) args += " --coopd" + windowIndex;
             if (autoConnect) args += " -autoconnect";
             if (!string.IsNullOrEmpty(extraArgs)) args += " " + extraArgs;
             Process.Start(new ProcessStartInfo(Path.Combine(s.GameDir, "gta_sa.exe"), args) { WorkingDirectory = s.GameDir, UseShellExecute = false });
-            return "gta_sa.exe " + args.Replace(serial, "***");
+            return "gta_sa.exe " + args;
         }
 
         // server writing straight into CoopAndreas\logs\server.log, independent of the manager process
@@ -1145,7 +1111,7 @@ namespace CoopManager
                 "## How to play / Як грати\n\n" +
                 "1. Download `" + Program.LauncherFileName + "` (link above) / завантажте лаунчер (посилання вище).\n" +
                 "2. Run it, check the game folder, press **Install** / запустіть, перевірте теку гри, натисніть **Встановити**.\n" +
-                "3. Enter nickname, server IP and the beta key, press **PLAY** / введіть нік, IP і ключ, натисніть **ГРАТИ**.\n\n" +
+                "3. Enter nickname and server IP, press **PLAY** / введіть нік і IP, натисніть **ГРАТИ**.\n\n" +
                 "`gta_sa.exe` 1.0 US is not included (Rockstar file) — the launcher asks for it if your game needs it.\n" +
                 "`gta_sa.exe` 1.0 US не входить у реліз (файл Rockstar) — лаунчер попросить його, якщо потрібно.\n\n" +
                 "- Source code of this version (GPL-3.0): " + sourceUrl + "/tree/" + head + "\n" +
@@ -1202,8 +1168,8 @@ namespace CoopManager
         volatile bool busy;
 
         GtaTabs tabs;
-        TextBox tbGame, tbSrc, tbZip, tbRelRepo, tbRelDir, tbNick, tbIp, tbPort, tbNick1, tbNick2, tbSerial, tbFilter, tbOutput, tbLog;
-        Label lbExe, lbMod, lbPkg, lbBackup, lbPcId, lbServer, lbDev, lbUpdates;
+        TextBox tbGame, tbSrc, tbZip, tbRelRepo, tbRelDir, tbNick, tbIp, tbPort, tbNick1, tbNick2, tbFilter, tbOutput, tbLog;
+        Label lbExe, lbMod, lbPkg, lbBackup, lbServer, lbDev, lbUpdates;
         RadioButton rbPlayer, rbDev;
         Button btnBuild, btnPublish;
         ComboBox cbLogFile;
@@ -1486,28 +1452,14 @@ namespace CoopManager
         void BuildLaunchTab()
         {
             var p = Page("tabLaunch");
-            var gs = Group(p, "serial", 8, 6, 860, 130);
-            Lbl(gs, "pcid", 12, 22, 120);
-            lbPcId = new Label { Location = new Point(135, 25), AutoSize = true, Font = new Font("Consolas", 10f, FontStyle.Bold), ForeColor = Theme.Warn };
-            gs.Controls.Add(lbPcId);
-            try { lbPcId.Text = "/gen " + Serial.GetPcId(); } catch (Exception ex) { lbPcId.Text = ex.Message; }
-            Btn(gs, "copyCmd", 330, 18, 170, delegate { Clipboard.SetText(lbPcId.Text); });
-            Btn(gs, "discord", 510, 18, 150, delegate { Process.Start("https://discord.gg/Z3ugSgFJMU"); });
-            var hint = Lbl(gs, "serialHint", 12, 52, 830);
-            hint.Height = 38;
-            Lbl(gs, "serialKey", 12, 94, 120);
-            tbSerial = new TextBox { Location = new Point(135, 94), Width = 200, Text = Serial.GetSerial() };
-            tbSerial.TextChanged += delegate { Serial.SetSerial(tbSerial.Text.Trim()); };
-            gs.Controls.Add(tbSerial);
-
-            var gp = Group(p, "play", 8, 142, 420, 150);
+            var gp = Group(p, "play", 8, 6, 420, 150);
             gp.Anchor = AnchorStyles.Top | AnchorStyles.Left;
             Lbl(gp, "nick", 12, 24, 110); tbNick = new TextBox { Location = new Point(125, 24), Width = 200, Text = settings.Nick }; gp.Controls.Add(tbNick);
             Lbl(gp, "ip", 12, 54, 110); tbIp = new TextBox { Location = new Point(125, 54), Width = 140, Text = settings.Ip }; gp.Controls.Add(tbIp);
             Lbl(gp, "port", 272, 54, 50); tbPort = new TextBox { Location = new Point(325, 54), Width = 70, Text = settings.Port.ToString() }; gp.Controls.Add(tbPort);
             Btn(gp, "launchGame", 12, 100, 200, delegate { SaveLaunchFields(); LaunchGame(0, settings.Nick, settings.Ip, -1); });
 
-            var gsv = Group(p, "server", 440, 142, 428, 150);
+            var gsv = Group(p, "server", 440, 6, 428, 150);
             lbServer = Lbl(gsv, null, 12, 26, 400);
             Btn(gsv, "startServer", 12, 60, 190, delegate { StartServer(); });
             Btn(gsv, "stopServer", 212, 60, 190, delegate { StopServer(); });
@@ -1518,7 +1470,7 @@ namespace CoopManager
                 UpdateServerLabel();
             });
 
-            var gt = Group(p, "test", 8, 300, 860, 170);
+            var gt = Group(p, "test", 8, 164, 860, 170);
             Lbl(gt, "nick1", 12, 26, 120); tbNick1 = new TextBox { Location = new Point(135, 26), Width = 160, Text = settings.Nick1 }; gt.Controls.Add(tbNick1);
             Lbl(gt, "nick2", 320, 26, 120); tbNick2 = new TextBox { Location = new Point(443, 26), Width = 160, Text = settings.Nick2 }; gt.Controls.Add(tbNick2);
             Btn(gt, "launchTest", 12, 64, 280, delegate
@@ -1551,7 +1503,6 @@ namespace CoopManager
         bool LaunchGame(int profile, string nick, string ip, int windowIndex, bool autoConnect = false)
         {
             if (!installer.IsInstalled) { MessageBox.Show(L.T("needInstall")); return false; }
-            if (string.IsNullOrEmpty(Serial.GetSerial())) { tabs.SelectedIndex = 1; MessageBox.Show(L.T("needSerial")); return false; }
             try { Log("launch: " + GameLauncher.Launch(settings, profile, nick, ip, windowIndex, autoConnect)); return true; }
             catch (Exception ex) { MessageBox.Show(L.F("failed", ex.Message)); return false; }
         }
@@ -2428,9 +2379,9 @@ namespace CoopManager
         volatile bool busy;
         string remoteVersion;
 
-        Label lbTitle, lbSub, lbFolderCap, lbFolder, lbExeCap, lbArchive, lbModState, lbUpdate, lbStatus, lbPlayerCap, lbKeyCap, lbNick, lbIp, lbPort, lbKey, lbIpHint;
-        Button btnLang, btnFolder, btnExe, btnMain, btnPlay, btnHowKey, btnLogs, btnRepair, btnUninstall, btnServer;
-        TextBox tbNick, tbIp, tbPort, tbKey;
+        Label lbTitle, lbSub, lbFolderCap, lbFolder, lbExeCap, lbArchive, lbModState, lbUpdate, lbStatus, lbPlayerCap, lbNick, lbIp, lbPort, lbIpHint;
+        Button btnLang, btnFolder, btnExe, btnMain, btnPlay, btnLogs, btnRepair, btnUninstall, btnServer;
+        TextBox tbNick, tbIp, tbPort;
         Panel cardGame, cardPlayer;
         readonly List<Button> actionButtons = new List<Button>();
 
@@ -2443,7 +2394,7 @@ namespace CoopManager
             FormBorderStyle = FormBorderStyle.FixedSingle;
             MaximizeBox = false;
             StartPosition = FormStartPosition.CenterScreen;
-            ClientSize = new Size(1000, 672);
+            ClientSize = new Size(1000, 606);
             Dim = 25;
             ColumnWidth = 540;
             ColumnDim = 200;
@@ -2482,7 +2433,7 @@ namespace CoopManager
             actionButtons.Add(btnMain);
 
             // --- player card
-            cardPlayer = Card(x, 328, w, 196);
+            cardPlayer = Card(x, 328, w, 130);
             lbPlayerCap = Caption(cardPlayer, 14, 10);
             lbNick = FieldLabel(cardPlayer, 14, 40);
             tbNick = Field(cardPlayer, 150, 37, 220, settings.Nick);
@@ -2493,26 +2444,20 @@ namespace CoopManager
             tbPort = Field(cardPlayer, 382, 71, 80, settings.Port.ToString());
             lbIpHint = new Label { Location = new Point(150, 100), Size = new Size(320, 20), ForeColor = Theme.Muted, Font = Theme.Base(8.75f) };
             cardPlayer.Controls.Add(lbIpHint);
-            lbKeyCap = Caption(cardPlayer, 14, 128);
-            lbKey = FieldLabel(cardPlayer, 14, 158);
-            tbKey = Field(cardPlayer, 150, 155, 170, Serial.GetSerial());
-            tbKey.TextChanged += delegate { Serial.SetSerial(tbKey.Text.Trim()); };
-            btnHowKey = SmallButton(cardPlayer, 330, 153, 132);
-            btnHowKey.Click += delegate { HowToGetKey(); };
 
-            btnPlay = new GtaButton { Location = new Point(x, 536), Size = new Size(w, 56), Tag = "play", Font = Theme.Semi(15f) };
+            btnPlay = new GtaButton { Location = new Point(x, 470), Size = new Size(w, 56), Tag = "play", Font = Theme.Semi(15f) };
             btnPlay.Click += delegate { Play(); };
             Controls.Add(btnPlay);
             actionButtons.Add(btnPlay);
 
             // --- footer
-            lbStatus = new Label { Location = new Point(x, 604), Size = new Size(w, 22), ForeColor = Theme.Muted, AutoEllipsis = true };
+            lbStatus = new Label { Location = new Point(x, 538), Size = new Size(w, 22), ForeColor = Theme.Muted, AutoEllipsis = true };
             Controls.Add(lbStatus);
-            btnLogs = SmallButton(this, x, 630, 110);
+            btnLogs = SmallButton(this, x, 564, 110);
             btnLogs.Click += delegate { Directory.CreateDirectory(installer.LogsDir); Process.Start("explorer.exe", installer.LogsDir); };
-            btnRepair = SmallButton(this, x + 118, 630, 110);
+            btnRepair = SmallButton(this, x + 118, 564, 110);
             btnRepair.Click += delegate { if (EnsureWritable()) RunBusy(() => installer.Repair()); };
-            btnServer = SmallButton(this, x + 236, 630, 120);
+            btnServer = SmallButton(this, x + 236, 564, 120);
             btnServer.Tag = "primary";
             btnServer.Click += delegate
             {
@@ -2520,7 +2465,7 @@ namespace CoopManager
                 using (var panel = new ServerPanel(settings, installer, ip => { tbIp.Text = ip; SaveFields(); }))
                     panel.ShowDialog(this);
             };
-            btnUninstall = SmallButton(this, x + w - 138, 630, 138);
+            btnUninstall = SmallButton(this, x + w - 138, 564, 138);
             btnUninstall.Tag = "danger";
             btnUninstall.Click += delegate
             {
@@ -2586,9 +2531,6 @@ namespace CoopManager
             lbIp.Text = L.T("ip");
             lbPort.Text = L.T("port");
             lbIpHint.Text = L.T("pIpHint");
-            lbKeyCap.Text = L.T("pKey");
-            lbKey.Text = L.T("serialKey");
-            btnHowKey.Text = L.T("pHowKey");
             btnPlay.Text = L.T("pPlay");
             btnLogs.Text = L.T("pLogs");
             btnRepair.Text = L.T("pRepair");
@@ -2743,14 +2685,6 @@ namespace CoopManager
             }
         }
 
-        void HowToGetKey()
-        {
-            string cmd = "/gen " + Serial.GetPcId();
-            try { Clipboard.SetText(cmd); } catch { }
-            MessageBox.Show(L.F("pHowKeyText", cmd), L.T("pKey"), MessageBoxButtons.OK, MessageBoxIcon.Information);
-            Process.Start("https://discord.gg/Z3ugSgFJMU");
-        }
-
         void SaveFields()
         {
             settings.Nick = tbNick.Text.Trim();
@@ -2763,7 +2697,6 @@ namespace CoopManager
         void Play()
         {
             SaveFields();
-            if (string.IsNullOrEmpty(Serial.GetSerial())) { MessageBox.Show(L.T("needSerial"), Text); tbKey.Focus(); return; }
             if (settings.Nick.Length == 0) { tbNick.Focus(); return; }
             try { SetStatus(GameLauncher.Launch(settings, 0, settings.Nick, settings.Ip, -1, false)); }
             catch (Exception ex) { MessageBox.Show(L.F("failed", ex.Message), Text); }

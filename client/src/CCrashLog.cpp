@@ -8,7 +8,6 @@
 #include <chrono>
 #include "../resources.h"
 #include <Psapi.h>
-#include <CCrashReporter.h>
 #include <fstream>
 #include <deque>
 #pragma comment(lib, "Version.lib")
@@ -181,8 +180,6 @@ static INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARA
     {
         ShowCursor(TRUE);
         SetDlgItemText(hDlg, IDC_CRASHLOG, CCrashLog::ms_szCrashMessage);
-        
-        CCrashReporter::PostCrashLog(std::string(CCrashLog::ms_szCrashMessage));
 
         if (CCrashLog::ms_bSuccessSavedLog)
         {
@@ -245,12 +242,7 @@ static INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARA
     {
     close_dialog:;
         EndDialog(hDlg, 0);
-        
-        // wait until the report is done or timed out
-        if (CCrashReporter::ms_bReportingEnabled && CCrashReporter::ms_bReady && CCrashReporter::ms_postThread.joinable())
-        {
-            CCrashReporter::ms_postThread.join();
-        }
+
 
         _exit(0);
         return (INT_PTR)TRUE;

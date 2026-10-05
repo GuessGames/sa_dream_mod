@@ -22,14 +22,14 @@ SA Dream Mod is my build based on [CoopAndreas](https://github.com/Tornamic/Coop
 1. Натисніть посилання **«Завантажити лаунчер»** вище — завантажиться `SADreamLauncher.exe`. Якщо Windows покаже «Windows захистив ваш ПК», натисніть **«Докладніше» → «Однаково запустити»** (лаунчер не підписаний).
 2. Запустіть лаунчер. Тека гри знайдеться сама, якщо ні — натисніть **«Змінити…»**.
 3. Натисніть **«Встановити»**. Лаунчер завантажить мод і зробить резервну копію оригінальних файлів гри.
-4. Введіть **нік**, **IP сервера** (його дає той, хто хостить) і **ключ бета-тесту** (кнопка **«Як отримати?»**).
+4. Введіть **нік** і **IP сервера** (його дає той, хто хостить). Жодних ключів чи реєстрацій не потрібно.
 5. Натисніть **«ГРАТИ»**.
 
 Оновлення — та сама кнопка в лаунчері. Лаунчер оновлює і мод, і себе.
 
 > Потрібна гра **GTA San Andreas**. Мод працює на версії `gta_sa.exe` **1.0 US**. Якщо у вас інша версія (Steam, Rockstar Launcher), лаунчер попросить вказати архів або теку з `gta_sa.exe` 1.0 US — ми його не поширюємо.
 
-**English:** download the launcher with the link above (if SmartScreen warns, choose *More info → Run anyway*), run it, press **Install**, enter your nickname, the server IP and the beta key, press **PLAY**. The game must be GTA San Andreas with `gta_sa.exe` **1.0 US** (the launcher asks for it if your version differs).
+**English:** download the launcher with the link above (if SmartScreen warns, choose *More info → Run anyway*), run it, press **Install**, enter your nickname and the server IP (no keys or accounts needed), press **PLAY**. The game must be GTA San Andreas with `gta_sa.exe` **1.0 US** (the launcher asks for it if your version differs).
 
 ### 🖥 Свій сервер / Hosting a server
 У лаунчері натисніть **«Сервер»** → **«Запустити сервер»**. Панель показує, чи працює сервер, хто з гравців онлайн, лог і **адреси, які треба дати друзям** (Radmin VPN / ZeroTier / локальна мережа / інтернет) з кнопкою «Копіювати IP». Сервер працює й після закриття лаунчера — зупиняється в тій самій панелі.
@@ -73,7 +73,7 @@ In game press **F8** for the admin menu: missions (host), player cheats, vehicle
 
 ## ❤️ Подяки / Credits
 
-Цей мод не існував би без **[CoopAndreas](https://github.com/Tornamic/CoopAndreas)** — автор **[Tornamic](https://github.com/Tornamic)** і всі контриб'ютори проєкту. Уся основа кооперативу — їхня робота. Підтримайте оригінальний проєкт і приєднуйтесь до їхнього [Discord](https://discord.gg/Z3ugSgFJMU) (там же видається ключ бета-тесту).
+Цей мод не існував би без **[CoopAndreas](https://github.com/Tornamic/CoopAndreas)** — автор **[Tornamic](https://github.com/Tornamic)** і всі контриб'ютори проєкту. Уся основа кооперативу — їхня робота. Підтримайте оригінальний проєкт і приєднуйтесь до їхнього [Discord](https://discord.gg/Z3ugSgFJMU).
 
 This mod would not exist without **[CoopAndreas](https://github.com/Tornamic/CoopAndreas)** by **[Tornamic](https://github.com/Tornamic)** and all of its contributors — the whole co-op foundation is their work. Please support the original project.
 

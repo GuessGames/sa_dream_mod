@@ -2,6 +2,7 @@
 #include "CAdminMenu.h"
 #include "CImGui.h"
 #include "MissionRunner.h"
+#include "CPacketTimeline.h"
 #include <imgui.h>
 #include <CCheat.h>
 #include <CDebugVehicleSpawner.h>
@@ -412,6 +413,15 @@ void CAdminMenu::DrawUI()
             if (ImGui::BeginTabItem("Телепорт")) { DrawTeleportTab(); ImGui::EndTabItem(); }
             if (ImGui::BeginTabItem("Гардероб")) { DrawWardrobeTab(); ImGui::EndTabItem(); }
             if (ImGui::BeginTabItem("Світ")) { DrawWorldTab(); ImGui::EndTabItem(); }
+            if (ImGui::BeginTabItem("Розробка"))
+            {
+                // network debugging for developers (was in the upstream D1212 debug window)
+                static bool bPacketTimeline = false;
+                ImGui::Checkbox("Packet timeline", &bPacketTimeline);
+                if (bPacketTimeline)
+                    CPacketTimeline::DrawUI();
+                ImGui::EndTabItem();
+            }
             ImGui::EndTabBar();
         }
 

@@ -19,10 +19,6 @@ Set-Content "$srv\server-config.ini" "port = $port`nmaxplayers = 8" -Encoding as
 $srvProc = Start-Process "$srv\server.exe" -ArgumentList "--no-colors" -WorkingDirectory $srv -WindowStyle Hidden -RedirectStandardOutput "$srv\server.log" -RedirectStandardError "$srv\server.err" -PassThru
 Start-Sleep 2
 
-# same serial/PC id the launcher uses (HKCU\Software\CoopAndreas)
-$k = Get-ItemProperty "HKCU:\Software\CoopAndreas"
-$md5 = [Security.Cryptography.MD5]::Create()
-$pcid = ([BitConverter]::ToString($md5.ComputeHash([Text.Encoding]::ASCII.GetBytes($k.pcid)), 0, 4)).Replace("-", "")
 $userDir = Join-Path ([Environment]::GetFolderPath("MyDocuments")) "GTA San Andreas User Files"
 $games = @()
 $before = @(Get-ChildItem "$g\CoopAndreas_crashes\*.log" -ErrorAction SilentlyContinue).Count
@@ -35,7 +31,7 @@ foreach ($p in 1, 2) {
     Set-Content $ini $lines -Encoding ascii
     $extra = if ($p -eq 1 -and $mission -ge 0) { " -testmission $mission" } else { "" }
     if ($p -eq $outfitProfile) { $extra += " -testoutfit" }
-    $games += Start-Process "$g\gta_sa.exe" -PassThru -ArgumentList "--coop -id $pcid -serial $($k.Serialkey) -profile $p --coopd$($p-1) -autoconnect$extra" -WorkingDirectory $g
+    $games += Start-Process "$g\gta_sa.exe" -PassThru -ArgumentList "--coop -profile $p --coopd$($p-1) -autoconnect$extra" -WorkingDirectory $g
     Start-Sleep 2
 }
 

@@ -9,7 +9,6 @@
 #include "network/packets/players.h"
 #include "network/packet.h"
 #include <CCarEnterExit.h>
-#include <CDiscordRPCMgr.h>
 #include <CEntryExitManager.h>
 #include <CEntryExitMarkerSync.h>
 #include <CEntryExitTransitionSync.h>
@@ -88,7 +87,6 @@ public:
         {
             CNetworkAnimQueue::Process();
             CEntryExitTransitionSync::Process();
-            CDiscordRPCMgr::Update();
             CDebugVehicleSpawner::Process();
 
             if (/*CNetwork::m_bConnected*/ CNetwork::m_bAuthenticated)

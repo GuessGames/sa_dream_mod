@@ -101,7 +101,6 @@ target("client", function()
 
     add_deps("plugin_sa")
     add_deps("enet")
-    add_deps("discordrpc")
 
     add_links("d3dx9") -- TODO STATIC
 end)
@@ -231,49 +230,4 @@ target("enet", function ()
     add_includedirs("third_party/")
 
     set_pcxxheader("third_party/enet/enet.h")
-end)
-
-target("discordrpc", function ()
-    set_kind("static")
-    
-    set_languages("c++17")
-
-    set_toolchains("msvc")
-    
-    add_includedirs("third_party/DiscordRPC/SDK/include")
-    add_files("third_party/DiscordRPC/SDK/src/*.cpp")
-    add_headerfiles("third_party/DiscordRPC/SDK/src/*.h")
-end)
-
-target("launcher", function ()
-    set_kind("binary")
-    add_ldflags("/SUBSYSTEM:WINDOWS", {force = true})
-    add_rules("win.sdk.application")
-
-    set_languages("c++17")
-    set_arch("x86")
-    set_plat("windows")
-    set_basename("LaunchCoopAndreas") 
-
-    set_toolchains("msvc")
-
-    add_files("launcher/src/*.cpp")
-    add_headerfiles("launcher/src/*.h")
-    add_files("launcher/version.rc")
-    
-    add_defines(
-        "_WINDOWS"
-    )
-
-    add_syslinks("kernel32", "user32", "comctl32", "shell32")
-
-    if is_mode("debug") then
-        add_defines("_DEBUG")
-        set_symbols("debug")
-    else
-        add_defines("NDEBUG")
-        set_optimize("fastest")
-        -- a PDB next to the binaries (never shipped): crash reports are symbolized with it
-        set_symbols("debug")
-    end
 end)

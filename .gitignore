@@ -14,3 +14,6 @@ output/
 compile_commands.json
 # manager local state
 tools/manager/*.log
+
+# Rockstar's original vorbisFile.dll: never in the repository (the installer recreates it from the player's game)
+dist/additional/vorbisHooked.dll

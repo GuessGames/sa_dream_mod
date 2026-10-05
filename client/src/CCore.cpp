@@ -1,11 +1,9 @@
 #include "stdafx.h"
 #include "CCrashLog.h"
 #include "Commands/CCustomCommandRegistrar.h"
-#include "CDiscordRPC.h"
 #include <COpCodeSync.h>
 #include <CCustomMenuManager.h>
 #include <winuser.h>
-#include <CLaunchManager.h>
 #include <Debug/CImGui.h>
 
 semver_t CCore::Version;
@@ -82,7 +80,6 @@ void CCore::Init()
     else
         CCore::RedirectOutputToLogFile();
     CImGui::Init();
-    CLaunchManager::CollectCommandLineArgs();
     WinMain_AfterWindowInit_ptr = injector::GetBranchDestination(0x748995).as_int();
     patch::RedirectCall(0x748995, WinMain_AfterWindowInit);
     CCustomMenuManager::Init();
@@ -90,7 +87,6 @@ void CCore::Init()
     CHook::Init();
     CCustomCommandRegistrar::Register();
     CDXFont::Init();
-    CDiscordRPC::Init();
     COpCodeSync::Init();
     Events::initGameEvent.after += []
     {
@@ -107,7 +103,6 @@ void CCore::Init()
     gameShutdownEvent.before += []
     {
         // disconnect from server
-        CDiscordRPC::Destroy();
         CNetwork::Disconnect();
     };
     semver_parse(COOPANDREAS_VERSION, &CCore::Version);

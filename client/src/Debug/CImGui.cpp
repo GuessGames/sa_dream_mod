@@ -3,8 +3,6 @@
 #include "imgui_internal.h"
 #include "backends/imgui_impl_win32.h"
 #include "backends/imgui_impl_dx9.h"
-#include "CPacketTimeline.h"
-#include "MissionRunner.h"
 #include "CAdminMenu.h"
 
 ImFont* pFont;
@@ -68,7 +66,7 @@ void CImGui::SetActive(bool bActive)
 
 void CImGui::UpdateActive()
 {
-    bool bActive = ms_bDebugWindow || CAdminMenu::ms_bOpen;
+    bool bActive = CAdminMenu::ms_bOpen;
     if (bActive != ms_bActive)
         SetActive(bActive);
 }
@@ -119,35 +117,6 @@ void CImGui::Init()
             }
 
             ImGui::PushFont(pFont);
-            if (CImGui::ms_bDebugWindow)
-            {
-            ImGui::Begin("Debug", nullptr,
-                ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_AlwaysAutoResize);
-
-            ImGui::SetWindowPos(ImVec2(0.0f, 0.0f));
-            ImGui::SetWindowSize(ImVec2(0.0, 0.0f));
-
-            ImGui::TextUnformatted("Enter 'D1212' as a cheat-code to de/activate debug menu.");
-
-            static bool bPacketTimeline = false;
-            ImGui::Checkbox("Packet Timeline", &bPacketTimeline);
-            if (bPacketTimeline)
-            {
-                CPacketTimeline::DrawUI();
-            }
-
-            static bool bMissionRunner = false;
-            ImGui::Checkbox("Missions", &bMissionRunner);
-            if (bMissionRunner && MissionRunner::DrawUI())
-            {
-                bMissionRunner = false;
-                CImGui::ms_bDebugWindow = false;
-                CImGui::UpdateActive();
-            }
-
-            ImGui::End();
-            }
-
             CAdminMenu::DrawUI();
             ImGui::PopFont();
 
@@ -156,17 +125,6 @@ void CImGui::Init()
             ImGui_ImplDX9_RenderDrawData(ImGui::GetDrawData());
 
             ImGui_ImplDX9_InvalidateDeviceObjects();
-        }
-    };
-
-    Events::gameProcessEvent.after += []
-    {
-        const char ACTIVATE_DEBUG_CHEAT[] = "2121D";  // type `d1212` as a cheat code
-        if (strncmp(ACTIVATE_DEBUG_CHEAT, CCheat::m_CheatString, ARRAY_SIZE(ACTIVATE_DEBUG_CHEAT) - 1) == 0)
-        {
-            CCheat::m_CheatString[0] = '\0';
-            CImGui::ms_bDebugWindow = !CImGui::ms_bDebugWindow;
-            CImGui::UpdateActive();
         }
     };
 }

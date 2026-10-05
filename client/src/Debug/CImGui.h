@@ -10,5 +10,4 @@ public:
 	static LRESULT WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
 
 	static inline bool ms_bActive = false;
-	static inline bool ms_bDebugWindow = false;
 };

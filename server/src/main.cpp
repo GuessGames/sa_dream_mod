@@ -145,12 +145,8 @@ int main(int argc, char* argv[])
     std::error_code ec;
     std::filesystem::current_path(exeDir, ec);
 
-    printf("[!] : Support:\n");
-    printf("- https://github.com/Tornamic/CoopAndreas\n");
-    printf("- https://discord.gg/TwQsR4qxVx\n");
-    printf("- coopandreasmod@gmail.com\n\n");
-
-    printf("[!] : CoopAndreas Server \n");
+    printf("[!] : SA Dream Mod server - https://github.com/GuessGames/sa_dream_mod\n");
+    printf("[!] : based on CoopAndreas by Tornamic - https://github.com/Tornamic/CoopAndreas\n\n");
 #ifdef _DEBUG
     char config[] = "Debug";
 #else

@@ -1,7 +1,6 @@
 #include "stdafx.h"
 #include "CConfigLoader.h"
 #include "CCustomMenuManager.h"
-#include <CCrashReporter.h>
 
 void CConfigLoader::BuildPath()
 {
@@ -51,8 +50,6 @@ void CConfigLoader::SetDirMyDocuments_Hook()
     BuildPath();
     Load();
 
-    CCrashReporter::FetchIP();  // init crash reporting stuff AFTER loading the config
-
     CCustomMenuManager::UpdateFromConfig();
     plugin::CallDyn(SetDirMyDocuments_Hook_ptr);
 }
@@ -72,26 +69,6 @@ void CConfigLoader::Load()
     GetPrivateProfileString(CONFIG_SECTION.c_str(), "ip", "", CNetwork::m_IpAddress, 16, ms_sDataPath.c_str());
     CNetwork::m_nPort =
         GetPrivateProfileInt(CONFIG_SECTION.c_str(), "port", Config::DEFAULT_PORT, ms_sDataPath.c_str());
-
-    char szReports[6];
-    DWORD result = GetPrivateProfileString(
-        CONFIG_SECTION.c_str(), "report-crashlogs", "true", szReports, sizeof(szReports), ms_sDataPath.c_str());
-    szReports[5] = 0;
-
-    if (result == 0)
-    {
-        CCrashReporter::ms_bReportingEnabled = true;
-        Save();
-    }
-    else
-    {
-        CCrashReporter::ms_bReportingEnabled = _strnicmp(szReports, "true", 5) == 0;
-    }
-
-#if DEBUG
-    logger::info("CConfigLoader::Load - Name %s Address %s Port %d ReportCrashlogs %s\n", CLocalPlayer::m_Name,
-        CNetwork::m_IpAddress, CNetwork::m_nPort, CCrashReporter::ms_bReportingEnabled ? "true" : "false");
-#endif
 }
 
 void CConfigLoader::Save()
@@ -102,6 +79,4 @@ void CConfigLoader::Save()
     WritePrivateProfileString(CONFIG_SECTION.c_str(), "ip", CNetwork::m_IpAddress, ms_sDataPath.c_str());
     WritePrivateProfileString(
         CONFIG_SECTION.c_str(), "port", std::to_string(CNetwork::m_nPort).c_str(), ms_sDataPath.c_str());
-    WritePrivateProfileString(
-        CONFIG_SECTION.c_str(), "report-crashlogs", CCrashReporter::ms_bReportingEnabled ? "true" : "false", ms_sDataPath.c_str());
 }
