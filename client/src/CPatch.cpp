@@ -254,6 +254,12 @@ void PatchPools()
     // EntryInfoNode pool (1012)
     // push    1F4h -> push    3F4h
     patch::SetUChar(0x550FB9 + 0x2, 0x3);
+
+    // fixes the 0x156173D crash (null CColModel in CPedModelInfo::CreateHitColModelSkinned)
+    // ColModel pool (20000): ~9990 of 10150 are used right after loading,
+    // the hit col models of the extra ped models streamed in coop filled the rest
+    // push 27A6h -> push 4E20h
+    patch::SetUInt(0x551106 + 1, 20000);
 }
 
 void FixCrashes()
