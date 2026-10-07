@@ -151,6 +151,8 @@ namespace CoopManager
             {"crashServer", new[]{"Сервер", "The server"}},
             {"crashAsk", new[]{"{0} аварійно завершилась ({1}).\n\nНадіслати звіт розробнику, щоб це виправили? Відкриється сторінка GitHub із заповненим звітом — натисніть «Submit new issue» (потрібен акаунт GitHub).\n\nПовний звіт також скопійовано в буфер обміну: якщо щось обрізано, вставте його в поле.", "{0} crashed ({1}).\n\nSend the report to the developer so it gets fixed? A GitHub page with the filled-in report opens — press \"Submit new issue\" (a GitHub account is needed).\n\nThe full report was also copied to the clipboard: paste it into the field if anything is cut."}},
             {"crashAutoAsk", new[]{"{0} аварійно завершилась ({1}).\n\nНадсилати звіти про збої розробнику автоматично? Так їх швидше виправлять.\n\nНадсилається лише технічний звіт гри (версія, місце помилки, стек, останні рядки логу мода — там можуть бути ніки гравців) і невеликий дамп пам'яті гри. Звіти зберігаються в закритому сховищі розробника, публічно не видні.\n\n«Так» — надсилати автоматично завжди, «Ні» — питати щоразу.", "{0} crashed ({1}).\n\nSend crash reports to the developer automatically? They get fixed faster.\n\nOnly the technical report of the game is sent (versions, the error location, the stack, the last lines of the mod's log, which may contain player nicknames) and a small memory dump of the game. Reports are kept in the developer's private storage, not public.\n\n\"Yes\" = always send automatically, \"No\" = ask every time."}},
+            {"settingsTitle", new[]{"Параметри", "Settings"}},
+            {"crashAutoSend", new[]{"Надсилати звіти про збої автоматично", "Send crash reports automatically"}},
             {"crashConsent", new[]{"Надсилати звіти про збої розробнику автоматично?\n\nЯкщо гра чи сервер аварійно завершаться, лаунчер сам надішле технічний звіт (версія, місце помилки, стек, останні рядки логу мода — там можуть бути ніки гравців) і невеликий дамп пам'яті гри. Так збої виправлять швидше.\n\nЗвіти зберігаються в закритому сховищі розробника, публічно не видні. Більше нічого не збирається.\n\n«Так» — надсилати автоматично, «Ні» — питати при кожному збої.", "Send crash reports to the developer automatically?\n\nIf the game or the server crashes, the launcher sends the technical report (versions, the error location, the stack, the last lines of the mod's log, which may contain player nicknames) and a small memory dump of the game. Crashes get fixed faster this way.\n\nReports are kept in the developer's private storage, not public. Nothing else is collected.\n\n\"Yes\" = send automatically, \"No\" = ask on every crash."}},
             {"crashSending", new[]{"Надсилаю звіт про збій…", "Sending the crash report…"}},
             {"crashSent", new[]{"Звіт про збій надіслано розробнику — дякуємо!", "The crash report was sent to the developer — thank you!"}},
@@ -204,6 +206,7 @@ namespace CoopManager
         public string Nick2 = "Tester2";
         public long LastCrashSeen = 0;
         public int AutoSendCrashes = -1; // -1 not asked yet, 1 send automatically, 0 ask every time
+        public string LastCrashSignatures = ""; // comma-separated list of last 3 crash signatures to avoid spam
 
         public static string AppDataDir { get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CoopAndreasManager"); } }
         static string FilePath { get { return Path.Combine(AppDataDir, Program.IsPlayerEdition ? "CoopLauncher.ini" : "CoopManager.ini"); } }
@@ -239,6 +242,7 @@ namespace CoopManager
                         case "Nick2": s.Nick2 = v; break;
                         case "LastCrashSeen": long.TryParse(v, out s.LastCrashSeen); break;
                         case "AutoSendCrashes": int.TryParse(v, out s.AutoSendCrashes); break;
+                        case "LastCrashSignatures": s.LastCrashSignatures = v; break;
                     }
                 }
             }
@@ -327,6 +331,7 @@ namespace CoopManager
             sb.AppendLine("Nick2=" + Nick2);
             sb.AppendLine("LastCrashSeen=" + LastCrashSeen);
             sb.AppendLine("AutoSendCrashes=" + AutoSendCrashes);
+            sb.AppendLine("LastCrashSignatures=" + LastCrashSignatures);
             Directory.CreateDirectory(AppDataDir);
             File.WriteAllText(FilePath, sb.ToString(), new UTF8Encoding(false));
         }
@@ -676,8 +681,9 @@ namespace CoopManager
         {
             var problems = Verify();
             foreach (var p in problems) log("! " + p);
-            if (problems.Count == 0) { log("OK — no problems found"); return; }
-            Install(true);
+            if (problems.Count == 0) { log("OK — no problems found"); }
+            else { Install(true); }
+            GameLauncher.FixVideoModeInInitFile(s.GameDir); // always fix video modes on repair
         }
 
         public void Uninstall()
@@ -880,6 +886,34 @@ namespace CoopManager
     // ------------------------------------------------------------------ game / server launching shared by GUI and CLI
     static class GameLauncher
     {
+        // fixes unsupported video modes in gta_sa.ini that cause "Cannot find Xxx video mode" errors
+        public static void FixVideoModeInInitFile(string gameDir)
+        {
+            string iniPath = Path.Combine(gameDir, "gta_sa.ini");
+            if (!File.Exists(iniPath)) return;
+            try
+            {
+                var lines = File.ReadAllLines(iniPath, Encoding.Default).ToList();
+                bool changed = false;
+                for (int i = 0; i < lines.Count; i++)
+                {
+                    string line = lines[i].Trim();
+                    // check for VideoMode=WIDTHxHEIGHTxBITS format (e.g., 500x600x32)
+                    if (line.StartsWith("VideoMode", StringComparison.OrdinalIgnoreCase))
+                    {
+                        // 500x600x32 is not a standard resolution; remove non-standard modes
+                        if (Regex.IsMatch(line, @"VideoMode\s*=\s*\d+x\d+x\d+", RegexOptions.IgnoreCase))
+                        {
+                            lines[i] = ""; // clear the line to let the game use its default
+                            changed = true;
+                        }
+                    }
+                }
+                if (changed) File.WriteAllLines(iniPath, lines, Encoding.Default);
+            }
+            catch { } // silently ignore any ini read/write errors
+        }
+
         // writes nickname/ip/port into the client config of the given profile
         public static void WriteClientConfig(Settings s, int profile, string nick, string ip)
         {
@@ -895,6 +929,7 @@ namespace CoopManager
         public static string Launch(Settings s, int profile, string nick, string ip, int windowIndex, bool autoConnect, string extraArgs = "")
         {
             WriteClientConfig(s, profile, nick, ip);
+            FixVideoModeInInitFile(s.GameDir);
 
             string args = "--coop";
             if (profile > 0) args += " -profile " + profile;
@@ -1062,6 +1097,20 @@ namespace CoopManager
             }
             if (RelayUrl.Length > 0 && s.AutoSendCrashes == 1)
             {
+                var f_sig = GetCrashSignature(f.FullName);
+                var sigs = (s.LastCrashSignatures ?? "").Split(',').Where(x => x.Length > 0).ToList();
+                if (sigs.Contains(f_sig) && sigs.Count >= 2 && sigs[sigs.Count-1] == f_sig)
+                {
+                    if (status != null) status(L.T("crashSendLater"));
+                    return;
+                }
+                if (f_sig.Length > 0)
+                {
+                    sigs.Add(f_sig);
+                    if (sigs.Count > 3) sigs.RemoveAt(0);
+                    s.LastCrashSignatures = string.Join(",", sigs);
+                    s.Save();
+                }
                 try { File.AppendAllLines(PendingPath, fresh.Select(x => x.FullName)); } catch { }
                 SendPendingAsync(s, version, status);
                 return;
@@ -1123,6 +1172,36 @@ namespace CoopManager
             return sb.Append('"').ToString();
         }
 
+        // Extract crash signature (address + first few frames) for deduplication
+        static string GetCrashSignature(string logPath)
+        {
+            try
+            {
+                var lines = File.ReadAllLines(logPath);
+                var sig = "";
+                foreach (var line in lines)
+                {
+                    if (line.Contains("CRASH AT:")) { sig = line.Substring(line.IndexOf("CRASH AT:")); break; }
+                }
+                return sig.Length > 0 ? sig.GetHashCode().ToString("x8") : "";
+            }
+            catch { return ""; }
+        }
+
+        static bool IsValidMinidump(string dmpPath)
+        {
+            try
+            {
+                using (var f = File.OpenRead(dmpPath))
+                {
+                    byte[] header = new byte[4];
+                    if (f.Read(header, 0, 4) < 4) return false;
+                    return header[0] == 'M' && header[1] == 'D' && header[2] == 'M' && header[3] == 'P';
+                }
+            }
+            catch { return false; }
+        }
+
         static bool Upload(string path, string nick, string version)
         {
             try
@@ -1130,7 +1209,7 @@ namespace CoopManager
                 string log = File.ReadAllText(path);
                 if (log.Length > 500000) log = log.Substring(0, 500000);
                 string dmp = Path.ChangeExtension(path, ".dmp"), dump = "";
-                if (File.Exists(dmp) && new FileInfo(dmp).Length <= 20 * 1024 * 1024) dump = Convert.ToBase64String(File.ReadAllBytes(dmp));
+                if (File.Exists(dmp)) { var fi = new FileInfo(dmp); if (fi.Length > 0 && fi.Length <= 20 * 1024 * 1024 && IsValidMinidump(dmp)) dump = Convert.ToBase64String(File.ReadAllBytes(dmp)); }
                 string name = Path.GetFileName(path);
                 string body = "{\"app\":\"sa-dream-mod\",\"kind\":" + Js(name.StartsWith("server_") ? "server" : "game") +
                               ",\"file\":" + Js(name) + ",\"release\":" + Js(version) + ",\"nick\":" + Js(nick) +
