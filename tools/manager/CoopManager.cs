@@ -681,9 +681,8 @@ namespace CoopManager
         {
             var problems = Verify();
             foreach (var p in problems) log("! " + p);
-            if (problems.Count == 0) { log("OK — no problems found"); }
-            else { Install(true); }
-            GameLauncher.FixVideoModeInInitFile(s.GameDir); // always fix video modes on repair
+            if (problems.Count == 0) { log("OK — no problems found"); return; }
+            Install(true);
         }
 
         public void Uninstall()
@@ -886,34 +885,6 @@ namespace CoopManager
     // ------------------------------------------------------------------ game / server launching shared by GUI and CLI
     static class GameLauncher
     {
-        // fixes unsupported video modes in gta_sa.ini that cause "Cannot find Xxx video mode" errors
-        public static void FixVideoModeInInitFile(string gameDir)
-        {
-            string iniPath = Path.Combine(gameDir, "gta_sa.ini");
-            if (!File.Exists(iniPath)) return;
-            try
-            {
-                var lines = File.ReadAllLines(iniPath, Encoding.Default).ToList();
-                bool changed = false;
-                for (int i = 0; i < lines.Count; i++)
-                {
-                    string line = lines[i].Trim();
-                    // check for VideoMode=WIDTHxHEIGHTxBITS format (e.g., 500x600x32)
-                    if (line.StartsWith("VideoMode", StringComparison.OrdinalIgnoreCase))
-                    {
-                        // 500x600x32 is not a standard resolution; remove non-standard modes
-                        if (Regex.IsMatch(line, @"VideoMode\s*=\s*\d+x\d+x\d+", RegexOptions.IgnoreCase))
-                        {
-                            lines[i] = ""; // clear the line to let the game use its default
-                            changed = true;
-                        }
-                    }
-                }
-                if (changed) File.WriteAllLines(iniPath, lines, Encoding.Default);
-            }
-            catch { } // silently ignore any ini read/write errors
-        }
-
         // writes nickname/ip/port into the client config of the given profile
         public static void WriteClientConfig(Settings s, int profile, string nick, string ip)
         {
@@ -929,7 +900,6 @@ namespace CoopManager
         public static string Launch(Settings s, int profile, string nick, string ip, int windowIndex, bool autoConnect, string extraArgs = "")
         {
             WriteClientConfig(s, profile, nick, ip);
-            FixVideoModeInInitFile(s.GameDir);
 
             string args = "--coop";
             if (profile > 0) args += " -profile " + profile;

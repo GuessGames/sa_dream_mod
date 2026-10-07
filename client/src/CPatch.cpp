@@ -120,6 +120,76 @@ void __declspec(naked) RsMouseSetPos_Reimpl(RwV2d* pos)
     }
 }
 
+// psSelectDevice without a saved mode (no gta_sa.set) accepts only fullscreen 800x600x32 and quits with
+// "Cannot find 800x600x32 video mode" when the driver does not list it; take the desktop mode or the closest one instead
+static int PickFallbackVideoMode()
+{
+    DEVMODE dm = {};
+    dm.dmSize = sizeof(dm);
+    int deskW = 0, deskH = 0;
+    if (EnumDisplaySettings(NULL, ENUM_CURRENT_SETTINGS, &dm))
+    {
+        deskW = dm.dmPelsWidth;
+        deskH = dm.dmPelsHeight;
+    }
+
+    // prefer: desktop size, 32 bit, not larger than the desktop, then the largest
+    int best = -1;
+    long long bestScore = -1;
+    int count = RwEngineGetNumVideoModes();
+    for (int i = 0; i < count; i++)
+    {
+        RwVideoMode vm;
+        RwEngineGetVideoModeInfo(&vm, i);
+        if (!(vm.flags & rwVIDEOMODEEXCLUSIVE) || vm.width < 640 || vm.height < 480)
+            continue;
+        bool fits = deskW == 0 || (vm.width <= deskW && vm.height <= deskH);
+        long long score = (long long)vm.width * vm.height;
+        if (fits) score += 1LL << 40;
+        if (vm.depth == 32) score += 1LL << 41;
+        if (vm.width == deskW && vm.height == deskH) score += 1LL << 42;
+        if (score > bestScore)
+        {
+            best = i;
+            bestScore = score;
+        }
+    }
+    if (best >= 0)
+    {
+        RwVideoMode vm;
+        RwEngineGetVideoModeInfo(&vm, best);
+        printf("[video] no 800x600x32 mode, using mode %d: %dx%dx%d (desktop %dx%d)\n", best, vm.width, vm.height, vm.depth, deskW, deskH);
+    }
+    else
+        printf("[video] no fullscreen video mode found\n");
+    return best;
+}
+
+static void __declspec(naked) VideoModeNotFound_Hook()
+{
+    __asm
+    {
+        call PickFallbackVideoMode
+        cmp eax, -1
+        je not_found
+        mov ds:[0x8D6220], eax
+        push 0x7462C5
+        ret
+    not_found:
+        push 0
+        push 0x86D388
+        push 0x874AD0
+        push 0
+        call dword ptr ds:[0x8582F4]
+        push 0x7463D4
+        ret
+    }
+}
+
+void PatchVideoMode()
+{
+    patch::RedirectJump(0x7463C0, VideoModeNotFound_Hook);}
+
 void PatchStreaming()
 {
     // increase available streaming memory (memory512.cs full analog)
@@ -468,6 +538,7 @@ void CPatch::ApplyPatches()
     PatchSCM();
     PatchPools();
     PatchStreaming();
+    PatchVideoMode();
     FixCrashes();
 #ifdef _DEV
     PatchConsole();
