@@ -896,10 +896,28 @@ namespace CoopManager
             Native.WritePrivateProfileString("config", "port", s.Port.ToString(), file);
         }
 
+        // Windows compatibility settings of gta_sa.exe (e.g. "~ 640X480 WINXPSP2" set by players for the old game) break it:
+        // 640x480 hides the 800x600 mode ("Cannot find 800x600x32 video mode"), XP mode makes CreateProcess fail with
+        // "The requested operation requires elevation"; the mod needs none of them
+        static void ClearCompatibilityMode(string exe)
+        {
+            try
+            {
+                using (var k = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers", true))
+                {
+                    if (k == null) return;
+                    foreach (var name in k.GetValueNames())
+                        if (string.Equals(name, exe, StringComparison.OrdinalIgnoreCase)) k.DeleteValue(name, false);
+                }
+            }
+            catch { } // a failure here must not block the launch
+        }
+
         // profile 0 = normal play; windowIndex 0/1 = side-by-side placement, -1 = none; returns the logged command line
         public static string Launch(Settings s, int profile, string nick, string ip, int windowIndex, bool autoConnect, string extraArgs = "")
         {
             WriteClientConfig(s, profile, nick, ip);
+            ClearCompatibilityMode(Path.GetFullPath(Path.Combine(s.GameDir, "gta_sa.exe")));
 
             string args = "--coop";
             if (profile > 0) args += " -profile " + profile;
