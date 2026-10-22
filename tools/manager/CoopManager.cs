@@ -146,6 +146,11 @@ namespace CoopManager
             {"pPlay", new[]{"ГРАТИ", "PLAY"}},
             {"pLogs", new[]{"Логи", "Logs"}},
             {"pRepair", new[]{"Виправити", "Repair"}},
+            {"pNews", new[]{"Що нового", "What's new"}},
+            {"pNewsEmpty", new[]{"Список змін з'явиться після перевірки оновлень.", "The list of changes appears after the update check."}},
+            {"pNewsNew", new[]{"НОВЕ", "NEW"}},
+            {"pNewsFix", new[]{"ВИПРАВЛЕНО", "FIXED"}},
+            {"pNewsChange", new[]{"ЗМІНЕНО", "CHANGED"}},
             {"crashTitle", new[]{"Звіт про збій", "Crash report"}},
             {"crashGame", new[]{"Гра", "The game"}},
             {"crashServer", new[]{"Сервер", "The server"}},
@@ -381,7 +386,8 @@ namespace CoopManager
             foreach (var f in Directory.GetFiles(dir, "*", SearchOption.AllDirectories))
             {
                 string rel = f.Substring(dir.TrimEnd('\\').Length + 1).Replace('\\', '/');
-                if (rel == "manifest.txt" || rel.StartsWith(".git") || rel.StartsWith("source/") || rel.StartsWith("dev/") || rel == "README.md") continue;
+                if (rel == "manifest.txt" || rel.StartsWith(".git") || rel.StartsWith("source/") || rel.StartsWith("dev/") || rel == "README.md" ||
+                    rel == "changelog.txt") continue;
                 m.Files[rel] = Installer.Sha256(f);
             }
             var sb = new StringBuilder();
@@ -765,6 +771,23 @@ namespace CoopManager
                 wc.Encoding = Encoding.UTF8;
                 return Manifest.Parse(wc.DownloadString(RawUrl(sha, "manifest.txt")));
             }
+        }
+
+        // the players' changelog of the same release snapshot; kept as the offline copy. null: none published yet
+        public Changelog FetchChangelog(string sha)
+        {
+            try
+            {
+                using (var wc = Client())
+                {
+                    wc.Encoding = Encoding.UTF8;
+                    string text = wc.DownloadString(RawUrl(sha, "changelog.txt"));
+                    Directory.CreateDirectory(Settings.AppDataDir);
+                    File.WriteAllText(Changelog.CachePath, text, new UTF8Encoding(false));
+                    return Changelog.Parse(text);
+                }
+            }
+            catch { return null; }
         }
 
         // downloads changed files into the player package directory; returns true when the manager itself changed
@@ -1274,6 +1297,10 @@ namespace CoopManager
             if (Directory.Exists(srcDir)) Directory.Delete(srcDir, true);
             File.Copy(Path.Combine(s.SourceDir, "LICENSE"), Path.Combine(s.ReleaseDir, "LICENSE"), true);
 
+            // the players' "What's new" in the launcher (read next to manifest.txt, not installed)
+            string changelog = Path.Combine(s.SourceDir, @"launcher\changelog.txt");
+            if (File.Exists(changelog)) File.Copy(changelog, Path.Combine(s.ReleaseDir, "changelog.txt"), true);
+
             // the developer manager is published next to the launcher (not part of the player package/manifest)
             string devManager = Path.Combine(s.SourceDir, @"build\manager\CoopAndreasManager.exe");
             if (File.Exists(devManager))
@@ -1400,7 +1427,7 @@ namespace CoopManager
             // the server keeps running after the manager is closed (stop it in the server panel)
             Theme.Apply(this);
             LoadArt(settings.GameDir, 0);
-            Shown += delegate { if (settings.PlayerMode) RunBusy(() => CheckUpdates()); };
+            Shown += delegate { if (settings.PlayerMode && !Program.PreviewMode) RunBusy(() => CheckUpdates()); };
             // the developer's own crashes go to the crash watcher, they are only listed here
             var crashTimer = new System.Windows.Forms.Timer { Interval = 15000 };
             crashTimer.Tick += delegate
@@ -1872,40 +1899,61 @@ namespace CoopManager
         }
     }
 
-    // ------------------------------------------------------------------ look & feel shared by both editions: GTA San Andreas menu style
-    // The background art is read from the player's own game (models\txd\LOADSCS.txd); nothing from the game is shipped.
+    // ------------------------------------------------------------------ look & feel shared by both editions
+    // Modern dark launcher style: the game's own loading screens behind translucent rounded cards, a San Andreas
+    // sunset orange as the accent. The background art is read from the player's own game (models\txd\LOADSCS.txd);
+    // nothing from the game is shipped.
     static class Theme
     {
-        // text colours on dark backgrounds, taken from the game's HUD
-        public static readonly Color Back = Color.FromArgb(8, 8, 10);
-        public static readonly Color Text = Color.FromArgb(235, 235, 235);
-        public static readonly Color Muted = Color.FromArgb(160, 172, 190);
-        public static readonly Color Accent = Color.FromArgb(172, 203, 241);   // HUD light blue
-        public static readonly Color Ok = Color.FromArgb(124, 204, 98);
-        public static readonly Color Warn = Color.FromArgb(226, 192, 99);
-        public static readonly Color Danger = Color.FromArgb(238, 84, 76);
+        public static readonly Color Back = Color.FromArgb(11, 12, 16);
+        public static readonly Color Text = Color.FromArgb(236, 238, 242);
+        public static readonly Color Muted = Color.FromArgb(154, 162, 178);
+        public static readonly Color Accent = Color.FromArgb(255, 145, 64);    // sunset orange
+        public static readonly Color Ok = Color.FromArgb(110, 214, 120);
+        public static readonly Color Warn = Color.FromArgb(244, 196, 88);
+        public static readonly Color Danger = Color.FromArgb(244, 98, 88);
         // button fills
-        public static readonly Color FillBlue = Color.FromArgb(50, 60, 127);    // HUD dark blue
-        public static readonly Color FillGreen = Color.FromArgb(54, 104, 44);   // money green
-        public static readonly Color FillRed = Color.FromArgb(150, 22, 26);     // HUD red
-        public static readonly Color FieldBack = Color.FromArgb(18, 20, 27);
-        public static readonly Color LogBack = Color.FromArgb(10, 11, 14);
+        public static readonly Color FillBlue = Color.FromArgb(232, 104, 30);   // "primary": the accent, darker for white text
+        public static readonly Color FillGreen = Color.FromArgb(34, 150, 74);   // "play"
+        public static readonly Color FillRed = Color.FromArgb(196, 52, 46);     // "danger"
+        public static readonly Color FillPlain = Color.FromArgb(46, 50, 60);    // other buttons
+        public static readonly Color CardFill = Color.FromArgb(205, 16, 18, 24);
+        public static readonly Color CardBorder = Color.FromArgb(38, 255, 255, 255);
+        public static readonly Color FieldBack = Color.FromArgb(26, 29, 37);
+        public static readonly Color FieldBorder = Color.FromArgb(58, 63, 76);
+        public static readonly Color LogBack = Color.FromArgb(14, 15, 20);
+        public const int Radius = 10;
 
-        static string baseFamily, titleFamily;
-        static bool HasFont(string name)
+        // plain Segoe UI: GDI+ (and GraphicsPath.AddString) does not handle the variable Segoe UI fonts of Windows 11
+        public static Font Base(float size = 10f, FontStyle style = FontStyle.Regular) { return new Font("Segoe UI", size, style); }
+        public static Font Semi(float size) { return new Font("Segoe UI Semibold", size); }
+        public static Font Title(float size) { return new Font("Segoe UI", size * 0.9f, FontStyle.Bold); }
+
+        public static GraphicsPath RoundRect(RectangleF r, float radius)
         {
-            foreach (var f in FontFamily.Families) if (f.Name.Equals(name, StringComparison.OrdinalIgnoreCase)) return true;
-            return false;
+            var p = new GraphicsPath();
+            float d = Math.Min(radius * 2, Math.Min(r.Width, r.Height));
+            if (d <= 1) { p.AddRectangle(r); return p; }
+            p.AddArc(r.X, r.Y, d, d, 180, 90);
+            p.AddArc(r.Right - d, r.Y, d, d, 270, 90);
+            p.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90);
+            p.AddArc(r.X, r.Bottom - d, d, d, 90, 90);
+            p.CloseFigure();
+            return p;
         }
-        static bool Bahn { get { if (baseFamily == null) baseFamily = HasFont("Bahnschrift") && HasFont("Bahnschrift SemiBold") ? "Bahnschrift" : "Segoe UI"; return baseFamily == "Bahnschrift"; } }
 
-        public static Font Base(float size = 10f, FontStyle style = FontStyle.Regular) { return new Font(Bahn ? "Bahnschrift" : "Segoe UI", size, style); }
-        public static Font Semi(float size) { return new Font(Bahn ? "Bahnschrift SemiBold" : "Segoe UI Semibold", size); }
-        // headings in the spirit of the game's Pricedown font: heavy condensed type with a black outline (Impact has Cyrillic)
-        public static Font Title(float size)
+        // dark Windows title bar and (Windows 11) rounded window corners
+        [DllImport("dwmapi.dll")] static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);
+        public static void DarkTitleBar(IntPtr hwnd)
         {
-            if (titleFamily == null) titleFamily = HasFont("Impact") ? "Impact" : "Arial Black";
-            return new Font(titleFamily, size);
+            try
+            {
+                int on = 1, round = 2, caption = Back.R | Back.G << 8 | Back.B << 16;
+                DwmSetWindowAttribute(hwnd, 20, ref on, 4);       // DWMWA_USE_IMMERSIVE_DARK_MODE
+                DwmSetWindowAttribute(hwnd, 33, ref round, 4);    // DWMWA_WINDOW_CORNER_PREFERENCE = round
+                DwmSetWindowAttribute(hwnd, 35, ref caption, 4);  // DWMWA_CAPTION_COLOR
+            }
+            catch { }
         }
 
         static readonly Bitmap measureBmp = new Bitmap(1, 1);
@@ -1924,15 +1972,23 @@ namespace CoopManager
                 return new SizeF(b.Right + outline * 2 + 2, Math.Max(b.Bottom, font.Height * 0.9f) + outline * 2 + 2);
             }
         }
-        // black outline + fill, like all text in the game
+        // text over the art: a soft dark shadow (`outline` = its size) keeps it readable on any loading screen
         public static void DrawOutlined(Graphics g, string text, Font font, Color color, RectangleF box, int outline, StringFormat sf)
         {
             g.SmoothingMode = SmoothingMode.AntiAlias;
             using (var p = TextPath(text, font, box, sf))
             {
                 if (outline > 0)
-                    using (var pen = new Pen(Color.Black, outline * 2) { LineJoin = LineJoin.Round })
-                        g.DrawPath(pen, p);
+                {
+                    using (var shadow = (GraphicsPath)p.Clone())
+                    {
+                        shadow.Transform(new Matrix(1, 0, 0, 1, 0, Math.Max(1, outline / 2)));
+                        for (int i = outline; i >= 1; i--)
+                            using (var pen = new Pen(Color.FromArgb(34, 0, 0, 0), i * 2) { LineJoin = LineJoin.Round })
+                                g.DrawPath(pen, shadow);
+                        using (var br = new SolidBrush(Color.FromArgb(110, 0, 0, 0))) g.FillPath(br, shadow);
+                    }
+                }
                 using (var br = new SolidBrush(color)) g.FillPath(br, p);
             }
         }
@@ -1947,7 +2003,8 @@ namespace CoopManager
                 else if (c is TextBox)
                 {
                     var t = (TextBox)c;
-                    t.BorderStyle = BorderStyle.FixedSingle;
+                    // inside a RoundField the field draws the (rounded) frame itself
+                    t.BorderStyle = c.Parent is RoundField ? BorderStyle.None : BorderStyle.FixedSingle;
                     t.BackColor = t.Multiline ? LogBack : FieldBack;
                     t.ForeColor = t.Multiline ? Color.Gainsboro : Text;
                 }
@@ -1960,9 +2017,9 @@ namespace CoopManager
         public static Panel HeaderPanel(Form f, string title, string subtitle, int height)
         {
             var h = new Panel { Dock = DockStyle.Top, Height = height, BackColor = Color.Transparent };
-            var t = new OutlineLabel { Text = title, ForeColor = Color.White, Font = Title(25f), Outline = 4, Location = new Point(12, 2) };
+            var t = new OutlineLabel { Text = title, ForeColor = Color.White, Font = Title(25f), Outline = 4, Location = new Point(18, 8) };
             h.Controls.Add(t);
-            h.Controls.Add(new Label { Text = subtitle, ForeColor = Accent, Font = Semi(10f), AutoSize = true, Location = new Point(18, Math.Max(height - 24, t.PreferredSize.Height - 2)), BackColor = Color.Transparent });
+            h.Controls.Add(new Label { Text = subtitle, ForeColor = Accent, Font = Semi(10f), AutoSize = true, Location = new Point(24, Math.Max(height - 26, t.PreferredSize.Height + 4)), BackColor = Color.Transparent });
             f.Controls.Add(h);
             return h;
         }
@@ -2058,6 +2115,12 @@ namespace CoopManager
         // WS_EX_COMPOSITED: the transparent children are painted in one pass, without flicker
         protected override CreateParams CreateParams { get { var cp = base.CreateParams; cp.ExStyle |= 0x02000000; return cp; } }
 
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            Theme.DarkTitleBar(Handle);
+        }
+
         // a random loading screen; rotateMs > 0 switches to the next one now and then, like the game does
         protected void LoadArt(string gameDir, int rotateMs)
         {
@@ -2097,7 +2160,11 @@ namespace CoopManager
             g.DrawImage(composed, new Rectangle(0, 0, c.Width, c.Height), new Rectangle(p.X, p.Y, c.Width, c.Height), GraphicsUnit.Pixel);
             var boxes = new List<Color>();
             for (Control a = c.Parent; a != null && a != this; a = a.Parent)
-                if (a.BackColor.A > 0 && a.BackColor.A < 255) boxes.Insert(0, a.BackColor);
+            {
+                // cards paint their rounded fill themselves (their BackColor stays transparent)
+                Color fill = a is GtaCard ? ((GtaCard)a).Fill : a.BackColor;
+                if (fill.A > 0 && fill.A < 255) boxes.Insert(0, fill);
+            }
             foreach (var col in boxes)
                 using (var br = new SolidBrush(col)) g.FillRectangle(br, 0, 0, c.Width, c.Height);
         }
@@ -2124,13 +2191,17 @@ namespace CoopManager
                     using (var br = new LinearGradientBrush(new Rectangle(0, -1, cw, ch + 2), Color.FromArgb(222, 128, 52), Color.FromArgb(34, 18, 46), 90f))
                         g.FillRectangle(br, 0, 0, cw, ch);
                 }
-                using (var br = new SolidBrush(Color.FromArgb(Dim, 0, 0, 0))) g.FillRectangle(br, 0, 0, cw, ch);
+                using (var br = new SolidBrush(Color.FromArgb(Dim, Theme.Back))) g.FillRectangle(br, 0, 0, cw, ch);
                 if (ColumnWidth > 0)
                 {
-                    using (var br = new SolidBrush(Color.FromArgb(ColumnDim, 0, 0, 0))) g.FillRectangle(br, 0, 0, ColumnWidth, ch);
-                    using (var br = new LinearGradientBrush(new Rectangle(ColumnWidth - 1, 0, 92, ch), Color.FromArgb(ColumnDim, 0, 0, 0), Color.FromArgb(0, 0, 0, 0), 0f))
-                        g.FillRectangle(br, ColumnWidth, 0, 90, ch);
+                    // a long soft fade from the dark column into the art
+                    using (var br = new SolidBrush(Color.FromArgb(ColumnDim, Theme.Back))) g.FillRectangle(br, 0, 0, ColumnWidth, ch);
+                    using (var br = new LinearGradientBrush(new Rectangle(ColumnWidth - 1, 0, 242, ch), Color.FromArgb(ColumnDim, Theme.Back), Color.FromArgb(0, Theme.Back), 0f))
+                        g.FillRectangle(br, ColumnWidth, 0, 240, ch);
                 }
+                // and a bottom vignette, like modern game launchers
+                using (var br = new LinearGradientBrush(new Rectangle(0, ch * 2 / 3 - 1, cw, ch / 3 + 2), Color.FromArgb(0, Theme.Back), Color.FromArgb(150, Theme.Back), 90f))
+                    g.FillRectangle(br, 0, ch * 2 / 3, cw, ch - ch * 2 / 3);
             }
         }
     }
@@ -2168,32 +2239,38 @@ namespace CoopManager
             // Button is an opaque control (no background pass), so the backdrop is painted here
             var form = FindForm() as GtaForm;
             if (form != null) form.PaintBackdrop(this, g);
-            var r = new Rectangle(0, 0, Width, Height);
+            g.SmoothingMode = SmoothingMode.AntiAlias;
             string kind = Tag as string;
             bool coloured = kind == "primary" || kind == "play" || kind == "danger";
-            Color fill = kind == "primary" ? Theme.FillBlue : kind == "play" ? Theme.FillGreen : kind == "danger" ? Theme.FillRed : Color.Black;
-            int alpha = coloured ? 235 : (hover && Enabled ? 200 : 150);
-            if (!Enabled) { fill = Mix(fill, Color.FromArgb(40, 40, 40), 0.7f); alpha = coloured ? 170 : 110; }
-            else if (down) fill = Mix(fill, Color.Black, 0.25f);
-            else if (hover && coloured) fill = Mix(fill, Color.White, 0.15f);
+            Color fill = kind == "primary" ? Theme.FillBlue : kind == "play" ? Theme.FillGreen : kind == "danger" ? Theme.FillRed : Theme.FillPlain;
+            int alpha = coloured ? 255 : 215;
+            if (!Enabled) { fill = Mix(fill, Color.FromArgb(34, 36, 42), 0.72f); alpha = coloured ? 220 : 170; }
+            else if (down) fill = Mix(fill, Color.Black, 0.22f);
+            else if (hover) fill = Mix(fill, Color.White, coloured ? 0.12f : 0.10f);
 
-            using (var br = new LinearGradientBrush(new Rectangle(0, -1, Width, Height + 2), Color.FromArgb(alpha, Mix(fill, Color.White, coloured ? 0.18f : 0.08f)), Color.FromArgb(alpha, fill), 90f))
-                g.FillRectangle(br, r);
-            Color frame = hover && Enabled ? Theme.Accent : Color.FromArgb(coloured ? 70 : 90, Theme.Accent);
-            using (var pen = new Pen(frame, hover && Enabled ? 2 : 1)) g.DrawRectangle(pen, hover && Enabled ? new Rectangle(1, 1, Width - 2, Height - 2) : new Rectangle(0, 0, Width - 1, Height - 1));
+            int radius = Math.Min(Theme.Radius - 2, Height / 2);
+            var r = new RectangleF(0.5f, 0.5f, Width - 1.5f, Height - 1.5f);
+            using (var path = Theme.RoundRect(r, radius))
+            {
+                // a soft glow of the action buttons under the mouse
+                if (hover && Enabled && coloured)
+                    using (var glow = new Pen(Color.FromArgb(70, fill), 3f)) g.DrawPath(glow, path);
+                using (var br = new SolidBrush(Color.FromArgb(alpha, fill))) g.FillPath(br, path);
+                // a thin light edge on top gives depth without the old glossy gradient
+                Color edge = coloured ? Color.FromArgb(Enabled ? 60 : 25, 255, 255, 255) : Color.FromArgb(hover && Enabled ? 70 : 34, 255, 255, 255);
+                using (var pen = new Pen(edge, 1f)) g.DrawPath(pen, path);
+            }
 
-            Color fore = Enabled ? ForeColor : Color.FromArgb(140, 140, 140);
+            Color fore = Enabled ? ForeColor : Color.FromArgb(130, 134, 144);
             if (Font.SizeInPoints >= 12f)
             {
                 using (var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
-                    Theme.DrawOutlined(g, Text, Font, fore, new RectangleF(2, 1, Width - 4, Height - 1), Font.SizeInPoints >= 15f ? 3 : 2, sf);
+                    Theme.DrawOutlined(g, Text, Font, fore, new RectangleF(2, 0, Width - 4, Height), 0, sf);
             }
             else
             {
                 var flags = TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix;
-                var tr = new Rectangle(4, 0, Width - 8, Height);
-                TextRenderer.DrawText(g, Text, Font, new Rectangle(tr.X + 1, tr.Y + 1, tr.Width, tr.Height), Color.Black, flags);
-                TextRenderer.DrawText(g, Text, Font, tr, fore, flags);
+                TextRenderer.DrawText(g, Text, Font, new Rectangle(4, 0, Width - 8, Height), fore, flags);
             }
         }
     }
@@ -2228,25 +2305,210 @@ namespace CoopManager
         }
     }
 
-    // translucent black box with a thin light blue line on top, like the boxes of the game's menus; Text is drawn as its caption
+    // translucent dark rounded card with a thin light border; Text is drawn as its caption
+    // (BackColor stays transparent so the rounded corners show the art; the fill is `Fill`, see GtaForm.PaintBackdrop)
     class GtaCard : Panel
     {
-        static readonly Font captionFont = Theme.Semi(10.5f);
+        static readonly Font captionFont = Theme.Semi(9.5f);
+        public Color Fill = Theme.CardFill;
 
         public GtaCard()
         {
             SetStyle(ControlStyles.SupportsTransparentBackColor | ControlStyles.AllPaintingInWmPaint | ControlStyles.ResizeRedraw | ControlStyles.UserPaint, true);
-            BackColor = Color.FromArgb(150, 0, 0, 0);
+            BackColor = Color.Transparent;
         }
 
         protected override void OnTextChanged(EventArgs e) { Invalidate(); base.OnTextChanged(e); }
 
+        protected override void OnPaintBackground(PaintEventArgs e)
+        {
+            var f = FindForm() as GtaForm;
+            if (f != null) f.PaintBackdrop(this, e.Graphics); else base.OnPaintBackground(e);
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            var g = e.Graphics;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            using (var path = Theme.RoundRect(new RectangleF(0.5f, 0.5f, Width - 1.5f, Height - 1.5f), Theme.Radius))
+            {
+                using (var br = new SolidBrush(Fill)) g.FillPath(br, path);
+                using (var pen = new Pen(Theme.CardBorder, 1f)) g.DrawPath(pen, path);
+            }
+            if (!string.IsNullOrEmpty(Text))
+            {
+                // high up: the cards of the developer manager start their content right below
+                using (var br = new SolidBrush(Theme.Accent)) g.FillRectangle(br, 12, 7, 3, 12);
+                TextRenderer.DrawText(g, Text.ToUpper(), captionFont, new Point(19, 4), Theme.Muted, TextFormatFlags.NoPrefix);
+            }
+        }
+    }
+
+    // a text field with a rounded frame (a borderless TextBox inside); the frame lights up while typing
+    class RoundField : Panel
+    {
+        public readonly TextBox Box;
+
+        public RoundField(int width, string value)
+        {
+            SetStyle(ControlStyles.SupportsTransparentBackColor | ControlStyles.AllPaintingInWmPaint | ControlStyles.ResizeRedraw | ControlStyles.UserPaint, true);
+            BackColor = Color.Transparent;
+            Size = new Size(width, 32);
+            Box = new TextBox
+            {
+                BorderStyle = BorderStyle.None, Text = value, Font = Theme.Base(10.5f),
+                BackColor = Theme.FieldBack, ForeColor = Theme.Text, Location = new Point(10, 7), Width = width - 20,
+            };
+            Box.GotFocus += delegate { Invalidate(); };
+            Box.LostFocus += delegate { Invalidate(); };
+            Controls.Add(Box);
+            Cursor = Cursors.IBeam;
+            Click += delegate { Box.Focus(); };
+        }
+
+        protected override void OnPaintBackground(PaintEventArgs e)
+        {
+            var f = FindForm() as GtaForm;
+            if (f != null) f.PaintBackdrop(this, e.Graphics); else base.OnPaintBackground(e);
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            var g = e.Graphics;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            using (var path = Theme.RoundRect(new RectangleF(0.5f, 0.5f, Width - 1.5f, Height - 1.5f), 7))
+            {
+                using (var br = new SolidBrush(Theme.FieldBack)) g.FillPath(br, path);
+                using (var pen = new Pen(Box.Focused ? Theme.Accent : Theme.FieldBorder, Box.Focused ? 1.5f : 1f)) g.DrawPath(pen, path);
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------ changelog for players
+    // launcher/changelog.txt in the source repo, published next to manifest.txt (not installed into the game):
+    //   # 22 жовтня 2026 | 22 October 2026          a release (newest first)
+    //   + Новий рядок українською | The same in English     new
+    //   * Виправлено ... | Fixed ...                       fix
+    //   - Прибрано ... | Removed ...                       removal / change
+    class Changelog
+    {
+        public class Item { public char Kind; public string Uk, En; public string Text { get { return L.Uk || string.IsNullOrEmpty(En) ? Uk : En; } } }
+        public class Section
+        {
+            public string TitleUk, TitleEn;
+            public string Title { get { return L.Uk || string.IsNullOrEmpty(TitleEn) ? TitleUk : TitleEn; } }
+            public readonly List<Item> Items = new List<Item>();
+        }
+        public readonly List<Section> Sections = new List<Section>();
+
+        public static Changelog Parse(string text)
+        {
+            var c = new Changelog();
+            Section cur = null;
+            foreach (var raw in (text ?? "").Replace("\r", "").Split('\n'))
+            {
+                string line = raw.Trim();
+                if (line.StartsWith("# "))
+                {
+                    string head = line.Substring(2).Trim();
+                    int sep = head.IndexOf(" | ");
+                    cur = new Section { TitleUk = sep >= 0 ? head.Substring(0, sep).Trim() : head, TitleEn = sep >= 0 ? head.Substring(sep + 3).Trim() : "" };
+                    c.Sections.Add(cur);
+                    continue;
+                }
+                if (cur == null || line.Length < 3 || "+*-".IndexOf(line[0]) < 0 || line[1] != ' ') continue;
+                string body = line.Substring(2).Trim();
+                int bar = body.IndexOf(" | ");
+                cur.Items.Add(new Item { Kind = line[0], Uk = bar >= 0 ? body.Substring(0, bar).Trim() : body, En = bar >= 0 ? body.Substring(bar + 3).Trim() : "" });
+            }
+            return c;
+        }
+
+        // the last downloaded copy, shown offline and before the update check finishes
+        public static string CachePath { get { return Path.Combine(Settings.AppDataDir, "changelog.txt"); } }
+        public static Changelog LoadCached()
+        {
+            try { return File.Exists(CachePath) ? Parse(File.ReadAllText(CachePath, Encoding.UTF8)) : new Changelog(); }
+            catch { return new Changelog(); }
+        }
+    }
+
+    // "What's new": the changelog drawn in a card, scrolled with the mouse wheel
+    class ChangelogView : GtaCard
+    {
+        Changelog log = new Changelog();
+        int scroll, contentHeight;
+        string emptyText = "";
+        static readonly Font titleFont = Theme.Semi(11f), itemFont = Theme.Base(9.75f), tagFont = Theme.Semi(7.5f);
+        const int TopY = 34, Side = 16;
+
+        public ChangelogView() { SetStyle(ControlStyles.Selectable, true); }
+
+        public void SetLog(Changelog changelog, string whenEmpty)
+        {
+            log = changelog ?? new Changelog();
+            emptyText = whenEmpty;
+            scroll = 0;
+            Invalidate();
+        }
+
+        // the wheel goes to the focused control: take the focus on hover, but never from a field being typed in
+        protected override void OnMouseEnter(EventArgs e)
+        {
+            var form = FindForm();
+            if (form == null || !(form.ActiveControl is TextBox)) Focus();
+            base.OnMouseEnter(e);
+        }
+        protected override void OnMouseDown(MouseEventArgs e) { Focus(); base.OnMouseDown(e); }
+        protected override void OnMouseWheel(MouseEventArgs e)
+        {
+            int max = Math.Max(0, contentHeight - (Height - TopY - 12));
+            scroll = Math.Max(0, Math.Min(max, scroll - e.Delta / 3));
+            Invalidate();
+            base.OnMouseWheel(e);
+        }
+
         protected override void OnPaint(PaintEventArgs e)
         {
             base.OnPaint(e);
-            using (var br = new SolidBrush(Color.FromArgb(170, Theme.Accent))) e.Graphics.FillRectangle(br, 0, 0, Width, 2);
-            if (!string.IsNullOrEmpty(Text))
-                TextRenderer.DrawText(e.Graphics, Text.ToUpper(), captionFont, new Point(10, 4), Theme.Accent, TextFormatFlags.NoPrefix);
+            var g = e.Graphics;
+            g.SetClip(new Rectangle(1, TopY - 4, Width - 2, Height - TopY));
+            int w = Width - Side * 2, y = TopY - scroll;
+            var wrap = TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix;
+            if (log.Sections.Count == 0)
+                TextRenderer.DrawText(g, emptyText, itemFont, new Rectangle(Side, y, w, 200), Theme.Muted, wrap);
+
+            foreach (var s in log.Sections)
+            {
+                TextRenderer.DrawText(g, s.Title, titleFont, new Point(Side, y), Theme.Text, TextFormatFlags.NoPrefix);
+                y += titleFont.Height + 8;
+                foreach (var it in s.Items)
+                {
+                    string tag = it.Kind == '+' ? L.T("pNewsNew") : it.Kind == '*' ? L.T("pNewsFix") : L.T("pNewsChange");
+                    Color tagColor = it.Kind == '+' ? Theme.Ok : it.Kind == '*' ? Theme.Accent : Theme.Muted;
+                    var tagSize = TextRenderer.MeasureText(tag, tagFont, Size.Empty, TextFormatFlags.NoPadding);
+                    var pill = new RectangleF(Side, y + 2, tagSize.Width + 10, 17);
+                    g.SmoothingMode = SmoothingMode.AntiAlias;
+                    using (var path = Theme.RoundRect(pill, 8))
+                    using (var br = new SolidBrush(Color.FromArgb(46, tagColor)))
+                        g.FillPath(br, path);
+                    TextRenderer.DrawText(g, tag, tagFont, Rectangle.Round(pill), tagColor,
+                        TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+
+                    int textX = Side + 92;
+                    var size = TextRenderer.MeasureText(g, it.Text, itemFont, new Size(w - 92, 1000), wrap);
+                    TextRenderer.DrawText(g, it.Text, itemFont, new Rectangle(textX, y, w - 92, size.Height), Theme.Text, wrap);
+                    y += Math.Max(size.Height, 20) + 8;
+                }
+                y += 10;
+            }
+            contentHeight = y + scroll - TopY;
+            g.ResetClip();
+
+            // there is more below: a fade at the bottom edge
+            if (contentHeight - scroll > Height - TopY - 12)
+                using (var br = new LinearGradientBrush(new Rectangle(1, Height - 40, Width - 2, 40), Color.FromArgb(0, 16, 18, 24), Color.FromArgb(220, 16, 18, 24), 90f))
+                    g.FillRectangle(br, 1, Height - 39, Width - 2, 30);
         }
     }
 
@@ -2567,6 +2829,8 @@ namespace CoopManager
         Button btnLang, btnFolder, btnExe, btnMain, btnPlay, btnLogs, btnRepair, btnUninstall, btnServer;
         TextBox tbNick, tbIp, tbPort;
         Panel cardGame, cardPlayer;
+        ChangelogView news;
+        Changelog changelog = Changelog.LoadCached();
         readonly List<Button> actionButtons = new List<Button>();
 
         public PlayerForm()
@@ -2578,70 +2842,74 @@ namespace CoopManager
             FormBorderStyle = FormBorderStyle.FixedSingle;
             MaximizeBox = false;
             StartPosition = FormStartPosition.CenterScreen;
-            ClientSize = new Size(1000, 606);
-            Dim = 25;
-            ColumnWidth = 540;
-            ColumnDim = 200;
+            ClientSize = new Size(1120, 652);
+            Dim = 40;
+            ColumnWidth = 560;
+            ColumnDim = 175;
             try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
 
-            var header = Theme.HeaderPanel(this, L.T("pTitle"), L.T("pSubtitle"), 72);
+            var header = Theme.HeaderPanel(this, L.T("pTitle"), L.T("pSubtitle"), 84);
             lbTitle = (Label)header.Controls[0];
             lbSub = (Label)header.Controls[1];
-            btnLang = new GtaButton { Size = new Size(96, 30), Location = new Point(540 - 114, 20), Font = Theme.Semi(9.5f) };
+            btnLang = new GtaButton { Size = new Size(104, 32), Location = new Point(ClientSize.Width - 128, 22), Font = Theme.Semi(9.5f) };
             btnLang.Click += delegate { L.Uk = !L.Uk; settings.Ukrainian = L.Uk; settings.Save(); ApplyTexts(); RefreshState(); };
             header.Controls.Add(btnLang);
 
-            int x = 18, w = ColumnWidth - 36;
+            int x = 24, w = 512;
 
             // --- game card
-            cardGame = Card(x, 88, w, 172);
-            lbFolderCap = Caption(cardGame, 14, 10);
-            lbFolder = new Label { Location = new Point(14, 34), Size = new Size(w - 130, 22), AutoEllipsis = true, ForeColor = Theme.Text };
+            cardGame = Card(x, 96, w, 184);
+            lbFolderCap = Caption(cardGame, 22, 8);
+            lbFolder = new Label { Location = new Point(18, 42), Size = new Size(w - 140, 22), AutoEllipsis = true, ForeColor = Theme.Text };
             cardGame.Controls.Add(lbFolder);
-            btnFolder = SmallButton(cardGame, w - 108, 30, 94);
+            btnFolder = SmallButton(cardGame, w - 116, 38, 100);
             btnFolder.Click += delegate { ChooseFolder(); };
-            lbExeCap = new Label { Location = new Point(14, 64), Size = new Size(w - 130, 20), ForeColor = Theme.Muted, Font = Theme.Base(9f) };
+            lbExeCap = new Label { Location = new Point(18, 72), Size = new Size(w - 140, 20), ForeColor = Theme.Muted, Font = Theme.Base(9f) };
             cardGame.Controls.Add(lbExeCap);
-            lbArchive = new Label { Location = new Point(14, 84), Size = new Size(w - 130, 22), AutoEllipsis = true, ForeColor = Theme.Text };
+            lbArchive = new Label { Location = new Point(18, 92), Size = new Size(w - 140, 22), AutoEllipsis = true, ForeColor = Theme.Text };
             cardGame.Controls.Add(lbArchive);
-            btnExe = SmallButton(cardGame, w - 108, 76, 94);
+            btnExe = SmallButton(cardGame, w - 116, 84, 100);
             btnExe.Click += delegate { ChooseExeSource(); };
-            lbModState = new Label { Location = new Point(14, 116), Size = new Size(w - 28, 22), Font = Theme.Semi(10.5f) };
-            lbUpdate = new Label { Location = new Point(14, 140), Size = new Size(w - 28, 22), ForeColor = Theme.Muted };
+            lbModState = new Label { Location = new Point(18, 126), Size = new Size(w - 36, 22), Font = Theme.Semi(10.5f) };
+            lbUpdate = new Label { Location = new Point(18, 150), Size = new Size(w - 36, 22), ForeColor = Theme.Muted };
             cardGame.Controls.Add(lbModState);
             cardGame.Controls.Add(lbUpdate);
 
-            btnMain = new GtaButton { Location = new Point(x, 270), Size = new Size(w, 46), Tag = "primary", Font = Theme.Semi(12f) };
+            btnMain = new GtaButton { Location = new Point(x, 292), Size = new Size(w, 46), Tag = "primary", Font = Theme.Semi(11.5f) };
             btnMain.Click += delegate { OnMainButton(); };
             Controls.Add(btnMain);
             actionButtons.Add(btnMain);
 
             // --- player card
-            cardPlayer = Card(x, 328, w, 130);
-            lbPlayerCap = Caption(cardPlayer, 14, 10);
-            lbNick = FieldLabel(cardPlayer, 14, 40);
-            tbNick = Field(cardPlayer, 150, 37, 220, settings.Nick);
-            lbIp = FieldLabel(cardPlayer, 14, 74);
-            tbIp = Field(cardPlayer, 150, 71, 170, settings.Ip);
-            lbPort = new Label { Location = new Point(330, 74), Size = new Size(50, 24), ForeColor = Theme.Muted };
+            cardPlayer = Card(x, 350, w, 146);
+            lbPlayerCap = Caption(cardPlayer, 22, 8);
+            lbNick = FieldLabel(cardPlayer, 18, 48);
+            tbNick = Field(cardPlayer, 150, 42, 240, settings.Nick);
+            lbIp = FieldLabel(cardPlayer, 18, 86);
+            tbIp = Field(cardPlayer, 150, 80, 180, settings.Ip);
+            lbPort = new Label { Location = new Point(342, 86), Size = new Size(50, 24), ForeColor = Theme.Muted };
             cardPlayer.Controls.Add(lbPort);
-            tbPort = Field(cardPlayer, 382, 71, 80, settings.Port.ToString());
-            lbIpHint = new Label { Location = new Point(150, 100), Size = new Size(320, 20), ForeColor = Theme.Muted, Font = Theme.Base(8.75f) };
+            tbPort = Field(cardPlayer, 396, 80, 96, settings.Port.ToString());
+            lbIpHint = new Label { Location = new Point(150, 116), Size = new Size(340, 20), ForeColor = Theme.Muted, Font = Theme.Base(8.75f) };
             cardPlayer.Controls.Add(lbIpHint);
 
-            btnPlay = new GtaButton { Location = new Point(x, 470), Size = new Size(w, 56), Tag = "play", Font = Theme.Semi(15f) };
+            btnPlay = new GtaButton { Location = new Point(x, 508), Size = new Size(w, 58), Tag = "play", Font = Theme.Title(17f) };
             btnPlay.Click += delegate { Play(); };
             Controls.Add(btnPlay);
             actionButtons.Add(btnPlay);
 
+            // --- "What's new" on the right, over the art
+            news = new ChangelogView { Location = new Point(x + w + 32, 96), Size = new Size(ClientSize.Width - (x + w + 32) - 24, 470) };
+            Controls.Add(news);
+
             // --- footer
-            lbStatus = new Label { Location = new Point(x, 538), Size = new Size(w, 22), ForeColor = Theme.Muted, AutoEllipsis = true };
+            lbStatus = new Label { Location = new Point(x, 576), Size = new Size(ClientSize.Width - 2 * x, 22), ForeColor = Theme.Muted, AutoEllipsis = true };
             Controls.Add(lbStatus);
-            btnLogs = SmallButton(this, x, 564, 110);
+            btnLogs = SmallButton(this, x, 604, 120);
             btnLogs.Click += delegate { Directory.CreateDirectory(installer.LogsDir); Process.Start("explorer.exe", installer.LogsDir); };
-            btnRepair = SmallButton(this, x + 118, 564, 110);
+            btnRepair = SmallButton(this, x + 128, 604, 120);
             btnRepair.Click += delegate { if (EnsureWritable()) RunBusy(() => installer.Repair()); };
-            btnServer = SmallButton(this, x + 236, 564, 120);
+            btnServer = SmallButton(this, x + 256, 604, 128);
             btnServer.Tag = "primary";
             btnServer.Click += delegate
             {
@@ -2649,7 +2917,7 @@ namespace CoopManager
                 using (var panel = new ServerPanel(settings, installer, ip => { tbIp.Text = ip; SaveFields(); }))
                     panel.ShowDialog(this);
             };
-            btnUninstall = SmallButton(this, x + w - 138, 564, 138);
+            btnUninstall = SmallButton(this, ClientSize.Width - x - 150, 604, 150);
             btnUninstall.Tag = "danger";
             btnUninstall.Click += delegate
             {
@@ -2664,6 +2932,7 @@ namespace CoopManager
             RefreshState();
             Shown += delegate
             {
+                if (Program.PreviewMode) return;
                 RunBusy(CheckUpdates);
                 CrashReports.AskConsentIfNeeded(this, settings);
                 CrashReports.CheckAndOffer(this, settings, installer, SetStatus);
@@ -2681,9 +2950,12 @@ namespace CoopManager
             Controls.Add(c);
             return c;
         }
+        // card heading with a short accent bar in front of it
         Label Caption(Control parent, int x, int y)
         {
-            var l = new OutlineLabel { Location = new Point(x - 4, y - 4), Font = Theme.Title(14f), ForeColor = Theme.Accent, Outline = 2 };
+            var bar = new Panel { Location = new Point(x - 8, y + 6), Size = new Size(3, 16), BackColor = Theme.Accent };
+            parent.Controls.Add(bar);
+            var l = new OutlineLabel { Location = new Point(x - 2, y), Font = Theme.Semi(12f), ForeColor = Theme.Text, Outline = 0 };
             parent.Controls.Add(l);
             return l;
         }
@@ -2695,15 +2967,28 @@ namespace CoopManager
         }
         TextBox Field(Control parent, int x, int y, int w, string value)
         {
-            var t = new TextBox { Location = new Point(x, y), Width = w, Text = value, Font = Theme.Base(10.5f), BorderStyle = BorderStyle.FixedSingle };
-            parent.Controls.Add(t);
-            return t;
+            var f = new RoundField(w, value) { Location = new Point(x, y) };
+            parent.Controls.Add(f);
+            return f.Box;
         }
         Button SmallButton(Control parent, int x, int y, int w)
         {
-            var b = new GtaButton { Location = new Point(x, y), Size = new Size(w, 30), Font = Theme.Base(9.5f) };
+            var b = new GtaButton { Location = new Point(x, y), Size = new Size(w, 32), Font = Theme.Semi(9.5f) };
             parent.Controls.Add(b);
             return b;
+        }
+
+        void ShowNews()
+        {
+            news.Text = L.T("pNews");
+            news.SetLog(changelog, L.T("pNewsEmpty"));
+        }
+
+        // --screenshot: show a changelog from a file
+        public void PreviewChangelog(string text)
+        {
+            changelog = Changelog.Parse(text);
+            ShowNews();
         }
 
         void ApplyTexts()
@@ -2725,6 +3010,7 @@ namespace CoopManager
             btnRepair.Text = L.T("pRepair");
             btnServer.Text = L.T("svTitle");
             btnUninstall.Text = L.T("uninstall");
+            ShowNews();
         }
 
         void SetStatus(string line)
@@ -2800,7 +3086,14 @@ namespace CoopManager
             try
             {
                 string sha;
-                remoteVersion = new Release(settings, s => { }).FetchRemote(out sha).Version;
+                var release = new Release(settings, s => { });
+                remoteVersion = release.FetchRemote(out sha).Version;
+                var fresh = release.FetchChangelog(sha);
+                if (fresh != null)
+                {
+                    changelog = fresh;
+                    BeginInvoke(new Action(ShowNews));
+                }
             }
             catch { remoteVersion = ""; }
         }
@@ -2900,6 +3193,8 @@ namespace CoopManager
         public const bool IsPlayerEdition = false;
 #endif
         public const string LauncherFileName = "SADreamLauncher.exe";
+        // --screenshot: the window is only drawn, nothing is checked, sent or saved
+        public static bool PreviewMode;
 
         [DllImport("kernel32.dll")]
         static extern bool AttachConsole(int pid);
@@ -3001,6 +3296,34 @@ namespace CoopManager
                 L.Uk = ss.Ukrainian;
                 Application.Run(new ServerPanel(ss, new Installer(ss, line => { }), null));
                 return 0;
+            }
+            if (args.Length > 1 && args[0] == "--screenshot")
+            {
+                // --screenshot out.png [changelog.txt]: renders the main window to a picture and exits
+                // (no update check, no crash reports): to look at the design without touching anything
+                PreviewMode = true;
+                Application.EnableVisualStyles();
+                Application.SetCompatibleTextRenderingDefault(false);
+                var ss = Settings.Load();
+                L.Uk = ss.Ukrainian;
+#if PLAYER
+                var form = new PlayerForm();
+                if (args.Length > 2) form.PreviewChangelog(File.ReadAllText(args[2], Encoding.UTF8));
+#else
+                var form = new DevForm();
+#endif
+                form.StartPosition = FormStartPosition.Manual;
+                form.Location = new Point(-4000, -4000);
+                form.ShowInTaskbar = false;
+                form.Show();
+                Application.DoEvents();
+                // DrawToBitmap draws the whole window, its frame included
+                using (var bmp = new Bitmap(form.Width, form.Height))
+                {
+                    form.DrawToBitmap(bmp, new Rectangle(Point.Empty, form.Size));
+                    bmp.Save(args[1], System.Drawing.Imaging.ImageFormat.Png);
+                }
+                Environment.Exit(0);
             }
             if (args.Length > 0) return RunCli(args);
             Application.EnableVisualStyles();

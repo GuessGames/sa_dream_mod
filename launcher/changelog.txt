@@ -1,0 +1,9 @@
+# 22 жовтня 2026 | 22 October 2026
++ Об'єкти місій (ящики, бочки, будки) тепер однакові в усіх гравців: з'являються, рухаються і ламаються разом | Mission objects (boxes, barrels, cabins) are now the same for every player: they appear, move and break together
++ Ящики, паркани й ліхтарі на вулицях ламаються в усіх, а не тільки в того, хто стріляв | Boxes, fences and lamp posts on the streets break for everyone, not only for the shooter
++ Коли місія переносить хоста в інше місце, інших гравців переносить разом із ним | When a mission moves the host somewhere else, the other players are brought along
++ Голосування за пропуск катсцени: катсцена пропускається, коли «пропустити» натиснули всі (гравці в AFK не заважають) | Cutscene skip voting: a cutscene is skipped when everyone pressed skip (AFK players don't block it)
+* Якщо гра падає, інші гравці одразу бачать, що ви вийшли, а не через хвилину | If your game crashes, the others see you leave right away, not a minute later
+* Виправлено часті вильоти гри біля інших гравців і педів (0x4D68BA) | Fixed frequent game crashes near other players and peds (0x4D68BA)
+* Виправлено вильоти, коли інший гравець сідає в машину пасажиром | Fixed crashes when another player gets into a car as a passenger
+- Новий вигляд лаунчера і цей список змін | A new launcher look and this list of changes

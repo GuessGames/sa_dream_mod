@@ -43,7 +43,9 @@ holds the summary (exception, backtrace, release, last log lines); there is no m
    `build\windows\x86\release\CoopAndreasSA.dll` into the game folder and run
    `tools\crash\test_two_windows.ps1 -mission <id> -runSeconds 120` (own server on port 6768, never the user's).
    Mission ids: `client/src/Debug/MissionRunner.cpp`. A reproduced crash must not come back.
-8. Ship: commit in `D:\CoopAndreasDev\src` with `Fixes #N` for issues (closes them on push), push `origin main`, then
+8. Ship: add a line for players to `launcher/changelog.txt` (the launcher's "What's new": `# <date uk> | <date en>`
+   heading on top, `* <uk> | <en>` for a fix; plain words, no addresses), commit in `D:\CoopAndreasDev\src` with
+   `Fixes #N` for issues (closes them on push), push `origin main`, then
    publish: `D:\CoopAndreasDev\src\build\manager\CoopAndreasManager.exe --publish` (requires a clean, pushed tree;
    archives the symbols; log in `%LOCALAPPDATA%\CoopAndreasManager\manager_cli.log`). Players get it with "Update".
 9. Not fixable now → no code change; write the analysis to `journal.md` so the developer sees it.
