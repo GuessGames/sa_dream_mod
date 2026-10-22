@@ -37,7 +37,8 @@ PACKET_HANDLER(ePacketType::PLAYER_ONFOOT_UPDATE, Packets::Players::OnFootUpdate
 
     CUtil::SetPlayerJetpack(pNetworkPlayer, pOnFootUpdate->bHasJetpack);
 
-    if (CUtil::IsDucked(pNetworkPlayer->m_pPed) != pOnFootUpdate->bDucking)
+    // the duck task looks up the ped's animations: without a clump it crashes in RpAnimBlendClumpGetAssociation
+    if (pNetworkPlayer->m_pPed->m_pRwClump && CUtil::IsDucked(pNetworkPlayer->m_pPed) != pOnFootUpdate->bDucking)
     {
         if (pOnFootUpdate->bDucking)
         {

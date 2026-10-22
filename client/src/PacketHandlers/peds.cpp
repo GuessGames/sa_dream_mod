@@ -98,7 +98,8 @@ PACKET_HANDLER(ePacketType::PED_ONFOOT, Packets::Peds::PedOnFoot* pPedOnFoot)
     }
 
     CPed* pPed = pNetworkPed->m_pPed;
-    if (!pPed)
+    // a deleted ped or one without a clump crashes in RpAnimBlendClumpGetAssociation (duck and aim tasks below)
+    if (!pPed || !pPed->IsVTableValid() || !pPed->m_pRwClump)
     {
         return;
     }

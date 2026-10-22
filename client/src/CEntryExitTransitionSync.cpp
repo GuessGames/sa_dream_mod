@@ -185,6 +185,19 @@ void CEntryExitTransitionSync::Receive(const Packets::Players::EnExTransition& p
         }
     }
 
+    // changing the ped's tasks looks up its animations: without a clump it crashes in RpAnimBlendClumpGetAssociation
+    if (!pPlayerPed->IsVTableValid())
+    {
+        return;
+    }
+
+    if (!pPlayerPed->m_pRwClump)
+    {
+        logger::warn("[crashfix] enex transition of player %d: the ped has no clump, only moving it", packet.playerid);
+        ApplyRemoteSnapshot(pNetworkPlayer, packet);
+        return;
+    }
+
     ClearRemoteTransition(pNetworkPlayer);
     ApplyRemoteSnapshot(pNetworkPlayer, packet);
 
