@@ -145,3 +145,23 @@ void CNetwork::Disconnect()
     m_bConnected = false;
     m_bAuthenticated = false;
 }
+
+void CNetwork::DisconnectOnCrash()
+{
+    static bool s_bDone = false;
+    if (s_bDone || !m_bConnected || m_pPeer == nullptr || m_pENetHost == nullptr)
+        return;
+
+    s_bDone = true;
+    m_bConnected = false;
+    m_bAuthenticated = false;
+
+    // the crash may be inside enet itself (or its state is corrupted): never crash again in the crash handler
+    __try
+    {
+        enet_peer_disconnect_now(m_pPeer, 0);
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER)
+    {
+    }
+}
