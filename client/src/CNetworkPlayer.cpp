@@ -183,7 +183,9 @@ void CNetworkPlayer::EnterVehiclePassenger(CVehicle* vehicle, int seatid)
         RemoveFromVehicle(m_pPed->m_pVehicle);
     }
 
-    m_pPed->m_pIntelligence->FlushImmediately(false);
+    // true: keep the default CTaskSimplePlayerOnFoot, the task below only goes to the primary slot
+    // (upstream 8a26d7d: without it the remote player lost its on-foot task, tons of crashes)
+    m_pPed->m_pIntelligence->FlushImmediately(true);
 
     m_pPed->m_nPedFlags.CantBeKnockedOffBike = 1;  // 1 - never
 
