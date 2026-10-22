@@ -150,10 +150,11 @@ private:
         return true;
     }
 };
-// generic mission sync: radar blips the host's (not adapted) mission put on peds/vehicles
+// generic mission sync: radar blips the host's (not adapted) mission put on peds/vehicles/objects
 struct _MissionEntityBlip
 {
     uint8_t isVehicle = 0;
+    uint8_t isObject = 0;  // entityId is a network object id
     int entityId = 0;
     uint8_t colour = 0;   // eBlipColour (0..8)
     uint8_t display = 0;  // eBlipDisplay
@@ -164,7 +165,8 @@ struct _MissionEntityBlip
     bool Serialize(Stream& stream)
     {
         serialize_int(stream, isVehicle, 0, 1);
-        serialize_int(stream, entityId, 0, 1023);
+        serialize_int(stream, isObject, 0, 1);
+        serialize_int(stream, entityId, 0, (Config::MAX_SERVER_PLAYERS << 16) - 1);
         serialize_int(stream, colour, 0, 15);
         serialize_int(stream, display, 0, 3);
         serialize_int(stream, scale, 0, 7);

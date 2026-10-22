@@ -122,6 +122,7 @@ void CNetwork::HandlePlayerDisconnected(ENetEvent& event)
     CNetworkPlayerManager::Remove(pNetworkPlayer);
     CNetworkPedManager::MigrateAllHosted(pNetworkPlayer, true);
     CNetworkVehicleManager::MigrateAllHosted(pNetworkPlayer, true);
+    CNetworkObjectManager::RemoveAllHostedAndNotify(pNetworkPlayer);
 
     // vehicles that keep existing must forget the leaving occupant
     for (auto* pVehicle : CNetworkVehicleManager::m_pVehicles)
@@ -286,6 +287,9 @@ void CNetwork::HandlePlayerConnected(ENetPeer* pENetPeer, Packets::System::Playe
         snprintf(packet.specialModelName, sizeof(packet.specialModelName), "%s", i->m_szSpecialModelName);
         GetPacketFactory().Send(packet, pNewNetworkPlayer);
     }
+
+    // after the vehicles and peds: an attached object needs its parent
+    CNetworkObjectManager::SendAllTo(pNewNetworkPlayer);
 
      if (Packets::Scripts::g_pLastEnExPlayerOwner)
      {

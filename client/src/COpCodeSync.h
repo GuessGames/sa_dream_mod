@@ -17,7 +17,7 @@ enum class eSyncedParamType
     // any `CVehicle` (aka car)
     VEHICLE,
 
-    // not in use yet
+    // any `CObject` created by `CREATE_OBJECT` of a synced mission (a network object)
     OBJECT,
 
     MAX_PARAMS

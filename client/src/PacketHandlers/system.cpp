@@ -64,6 +64,7 @@ PACKET_HANDLER(ePacketType::PLAYER_DISCONNECTED, Packets::System::PlayerDisconne
 PACKET_HANDLER(ePacketType::PLAYER_HANDSHAKE, Packets::System::PlayerHandshake* pPlayerHandshake)
 {
     CNetworkPlayerManager::m_nMyId = pPlayerHandshake->yourid;
+    CNetworkObjectManager::ResetIdAllocator();
     CNetwork::m_bAuthenticated = true;
     // the ambient population (peds, traffic, parked cars) is generated only by the host,
     // everyone else receives the host's entities; see PLAYER_ASSIGN_HOST

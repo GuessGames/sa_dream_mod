@@ -156,6 +156,21 @@ const SSyncedOpCode syncedOpcodes[] =
     {0x00AB, true, {eSyncedParamType::VEHICLE}}, // set_car_coordinates [Car] {x} [float] {y} [float] {z} [float]
     {0x0175, true, {eSyncedParamType::VEHICLE}}, // set_car_heading [Car] {heading} [float]
     
+    // Objects (mission objects are network objects), movement and damage state are synced by `ObjectUpdate`/`ObjectDamage`
+    {COMMAND_TASK_PICK_UP_OBJECT, true, {eSyncedParamType::PED, eSyncedParamType::OBJECT}},
+    {COMMAND_SET_OBJECT_VISIBLE, true, {eSyncedParamType::OBJECT}},
+    {COMMAND_SET_OBJECT_COLLISION, true, {eSyncedParamType::OBJECT}},
+    {COMMAND_SET_OBJECT_DYNAMIC, true, {eSyncedParamType::OBJECT}},
+    {COMMAND_FREEZE_OBJECT_POSITION, true, {eSyncedParamType::OBJECT}},
+    {COMMAND_SET_OBJECT_AREA_VISIBLE, true, {eSyncedParamType::OBJECT}},
+    {COMMAND_SET_OBJECT_PROOFS, true, {eSyncedParamType::OBJECT}},
+    {COMMAND_SET_OBJECT_HEALTH, true, {eSyncedParamType::OBJECT}},
+    {COMMAND_PLAY_OBJECT_ANIM, true, {eSyncedParamType::OBJECT}},
+    {COMMAND_BREAK_OBJECT, true, {eSyncedParamType::OBJECT}},
+    {COMMAND_SET_OBJECT_COLLISION_DAMAGE_EFFECT, true, {eSyncedParamType::OBJECT}},
+    {COMMAND_SET_OBJECT_ONLY_DAMAGED_BY_PLAYER, true, {eSyncedParamType::OBJECT}},
+    {COMMAND_MAKE_OBJECT_TARGETTABLE, true, {eSyncedParamType::OBJECT}},
+
     // Explosions
     {0x070C, true, {eSyncedParamType::VEHICLE}}, // explode_car_in_cutscene [Car]
     
@@ -368,6 +383,19 @@ std::vector<uint8_t> COpCodeSync::SerializeOpcode(int idx, int& outSize)
                         //CChat::AddMessage("Parsed vehicle id %d...", networkVehicle->m_nVehicleId);
                     }
                     else scriptParamsBuffer[i].value = -1;
+                }
+                else scriptParamsBuffer[i].value = -1;
+
+                break;
+            }
+            case eSyncedParamType::OBJECT:
+            {
+                CObject* object = CPools::GetObject(scriptParamsBuffer[i].value);
+                CNetworkObject* networkObject = object ? CNetworkObjectManager::GetObject(object) : nullptr;
+                if (networkObject)
+                {
+                    scriptParamsBuffer[i].entityId = networkObject->m_nObjectId;
+                    scriptParamsBuffer[i].entityType = eSyncedParamType::OBJECT;
                 }
                 else scriptParamsBuffer[i].value = -1;
 
@@ -660,6 +688,26 @@ void COpCodeSync::HandlePacket(const uint8_t* buffer, int bufferSize)
 
                     break;
                 }
+                case eSyncedParamType::OBJECT:
+                {
+                    CNetworkObject* networkObject = scriptParamsBuffer[i].entityType == eSyncedParamType::OBJECT
+                                                        ? CNetworkObjectManager::GetObject(scriptParamsBuffer[i].entityId)
+                                                        : nullptr;
+                    if (networkObject && networkObject->m_pObject)
+                    {
+                        if (!networkObject->m_pObject->IsVTableValid())
+                            return;
+
+                        scriptParamsBuffer[i].value = CPools::GetObjectRef(networkObject->m_pObject);
+                    }
+                    else if (!IsOpcodeRequiresStrictCheck(header.opcode))
+                    {
+                        scriptParamsBuffer[i].value = -1;
+                    }
+                    else return;
+
+                    break;
+                }
                 default:
                     break;
                 }
@@ -737,6 +785,7 @@ void COpCodeSync::HandlePacket(const uint8_t* buffer, int bufferSize)
     case COMMAND_TASK_DIE_NAMED_ANIM:
     case COMMAND_TASK_PLAY_ANIM_WITH_FLAGS:
     case COMMAND_TASK_PLAY_ANIM_SECONDARY:
+    case COMMAND_PLAY_OBJECT_ANIM:
     {
         char* animlib = textParamBuffer[1];
         int id = CAnimManager::GetAnimationBlockIndex(animlib);

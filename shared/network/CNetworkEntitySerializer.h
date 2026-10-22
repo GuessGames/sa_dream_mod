@@ -30,6 +30,9 @@ public:
 		case NETWORK_ENTITY_TYPE_PED:
 			maxValue = Config::MAX_SERVER_PEDS;
 			break;
+		case NETWORK_ENTITY_TYPE_OBJECT:
+			maxValue = Config::MAX_SERVER_PLAYERS << 16;  // Packets::Objects::OBJECT_ID_MAX + 1
+			break;
 		}
 		
 		if (maxValue == 0)

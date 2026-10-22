@@ -8,6 +8,7 @@
 #include <CEntryExitTransitionSync.h>
 #include <CShotInfo.h>
 #include <game_sa/CTagManager.h>
+#include <COpCodeSync.h>
 
 // static void __cdecl CWeather__ForceWeather_Hook(short id)
 // {
@@ -101,6 +102,12 @@ static void __cdecl CWorld__Add_Hook(CEntity* entity)
 
     if (entity->IsVTableValid())
         CWorld::Add(entity);
+
+    // a mission object of the host's synced mission (CREATE_OBJECT); re-adds after a move are skipped by ShouldHost
+    if (entity->m_nType == eEntityType::ENTITY_TYPE_OBJECT && CNetworkObjectManager::ShouldHost((CObject*)entity))
+    {
+        CNetworkObject::CreateHosted((CObject*)entity);
+    }
 }
 static void __cdecl CWorld__Remove_Hook(CEntity* entity)
 {

@@ -39,6 +39,7 @@ unsigned int lastDriverSyncTickRate = 0;
 unsigned int lastIdleVehicleSyncTickRate = 0;
 unsigned int lastPassengerSyncTickRate = 0;
 unsigned int lastPedSyncTickRate = 0;
+unsigned int lastObjectSyncTickRate = 0;
 unsigned int lastWeatherTimeSyncTickRate = 0;
 unsigned int lastPlayerAimSyncTickRate = 0;
 bool bBeenConnected;
@@ -225,6 +226,12 @@ public:
                  {
                      CNetworkVehicleManager::UpdateIdle();
                      lastIdleVehicleSyncTickRate = tickCount;
+                 }
+
+                 if (tickCount > lastObjectSyncTickRate + 66)
+                 {
+                     CNetworkObjectManager::Update();
+                     lastObjectSyncTickRate = tickCount;
                  }
 
                  if (tickCount > lastPedSyncTickRate + 50)

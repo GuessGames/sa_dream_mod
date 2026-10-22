@@ -29,7 +29,8 @@ foreach ($p in 1, 2) {
     $lines = $lines | Where-Object { $_ -notmatch '^(nickname|ip|port)=' }
     $lines += "nickname=Tester$p", "ip=127.0.0.1", "port=$port"
     Set-Content $ini $lines -Encoding ascii
-    $extra = if ($p -eq 1 -and $mission -ge 0) { " -testmission $mission" } else { "" }
+    # both get it: only the one that becomes the host launches it
+    $extra = if ($mission -ge 0) { " -testmission $mission" } else { "" }
     if ($p -eq $outfitProfile) { $extra += " -testoutfit" }
     $games += Start-Process "$g\gta_sa.exe" -PassThru -ArgumentList "--coop -profile $p --coopd$($p-1) -autoconnect$extra" -WorkingDirectory $g
     Start-Sleep 2
@@ -48,4 +49,4 @@ $after | Sort-Object LastWriteTime | Select-Object -Last ([Math]::Max(0, $after.
 $games | Where-Object { -not $_.HasExited } | ForEach-Object { Stop-Process -Id $_.Id -Force }
 Stop-Process -Id $srvProc.Id -Force -ErrorAction SilentlyContinue
 "--- server"; Get-Content "$srv\server.log" -ErrorAction SilentlyContinue | Select-String "freeId|disconnected" | ForEach-Object { $_.Line }
-foreach ($n in 1, 2) { "--- client_$n"; Get-Content "$g\CoopAndreas\logs\client_$n.log" -ErrorAction SilentlyContinue | Select-String "\[admin\]|\[mission\] replay|\[crashfix\]|host now|error|window|pause" | Select-Object -Last 10 | ForEach-Object { $_.Line } }
+foreach ($n in 1, 2) { "--- client_$n"; Get-Content "$g\CoopAndreas\logs\client_$n.log" -ErrorAction SilentlyContinue | Select-String "\[admin\]|\[mission\] replay|\[crashfix\]|\[obj\]|host now|error|pause" | Select-Object -Last 25 | ForEach-Object { $_.Line } }

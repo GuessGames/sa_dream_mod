@@ -23,6 +23,16 @@ CEntity* CNetworkEntitySerializer::GetEntity()
 			}
 		}
 	}
+	else if (entityType == NETWORK_ENTITY_TYPE_OBJECT)
+	{
+		if (auto networkObject = CNetworkObjectManager::GetObject(entityId))
+		{
+			if (auto object = networkObject->m_pObject)
+			{
+				return object;
+			}
+		}
+	}
 	else if (entityType == NETWORK_ENTITY_TYPE_PLAYER)
 	{
 		if (CNetworkPlayerManager::m_nMyId == entityId)
@@ -80,6 +90,15 @@ void CNetworkEntitySerializer::SetEntity(CEntity* entity)
 		if (auto networkVehicle = CNetworkVehicleManager::GetVehicle(entity))
 		{
 			entityId = networkVehicle->m_nVehicleId;
+		}
+	}
+	else if (entity->m_nType == ENTITY_TYPE_OBJECT)
+	{
+		// only network objects can be resolved on the other side
+		if (auto networkObject = CNetworkObjectManager::GetObject(entity))
+		{
+			entityType = NETWORK_ENTITY_TYPE_OBJECT;
+			entityId = networkObject->m_nObjectId;
 		}
 	}
 }

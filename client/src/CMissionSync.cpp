@@ -103,13 +103,23 @@ void SendEntityBlipsIfChanged()
     for (int i = 0; i < MAX_RADAR_TRACES && missionActive; i++)
     {
         const tRadarTrace& trace = CRadar::ms_RadarTrace[i];
-        if (!trace.m_bInUse || (trace.m_nBlipType != BLIP_CAR && trace.m_nBlipType != BLIP_CHAR))
+        if (!trace.m_bInUse ||
+            (trace.m_nBlipType != BLIP_CAR && trace.m_nBlipType != BLIP_CHAR && trace.m_nBlipType != BLIP_OBJECT))
             continue;
         if (packet.count >= Packets::Blips::MissionEntityBlips::MAX_BLIPS)
             break;
 
         Packets::Blips::_MissionEntityBlip blip{};
-        if (trace.m_nBlipType == BLIP_CAR)
+        if (trace.m_nBlipType == BLIP_OBJECT)
+        {
+            CObject* object = CPools::GetObject(trace.m_nEntityHandle);
+            CNetworkObject* networkObject = object ? CNetworkObjectManager::GetObject(object) : nullptr;
+            if (!networkObject)
+                continue;
+            blip.isObject = 1;
+            blip.entityId = networkObject->m_nObjectId;
+        }
+        else if (trace.m_nBlipType == BLIP_CAR)
         {
             CVehicle* vehicle = CPools::GetVehicle(trace.m_nEntityHandle);
             CNetworkVehicle* networkVehicle = vehicle ? CNetworkVehicleManager::GetVehicle(vehicle) : nullptr;
@@ -133,7 +143,7 @@ void SendEntityBlipsIfChanged()
         blip.friendly = trace.m_bFriendly;
         packet.blips[packet.count++] = blip;
 
-        key += std::to_string(blip.isVehicle) + ":" + std::to_string(blip.entityId) + ":" + std::to_string(blip.colour) + ":" +
+        key += std::to_string(blip.isVehicle) + std::to_string(blip.isObject) + ":" + std::to_string(blip.entityId) + ":" + std::to_string(blip.colour) + ":" +
                std::to_string(blip.display) + ":" + std::to_string(blip.scale) + ";";
     }
 
@@ -222,7 +232,8 @@ void CMissionSync::ApplyEntityBlips(const Packets::Blips::MissionEntityBlips& pa
             continue;
         bool keep = false;
         for (int i = 0; i < packet.count && !keep; i++)
-            keep = !packet.blips[i].isVehicle && packet.blips[i].entityId == networkPed->m_nPedId;
+            keep = !packet.blips[i].isVehicle && !packet.blips[i].isObject &&
+                   packet.blips[i].entityId == networkPed->m_nPedId;
         if (!keep)
             ClearRemoteBlip(networkPed->m_nBlipHandle, networkPed->m_bMissionBlip);
     }
@@ -236,12 +247,36 @@ void CMissionSync::ApplyEntityBlips(const Packets::Blips::MissionEntityBlips& pa
         if (!keep)
             ClearRemoteBlip(networkVehicle->m_nBlipHandle, networkVehicle->m_bMissionBlip);
     }
+    for (auto* networkObject : CNetworkObjectManager::m_pObjects)
+    {
+        if (!networkObject->m_bMissionBlip)
+            continue;
+        bool keep = false;
+        for (int i = 0; i < packet.count && !keep; i++)
+            keep = packet.blips[i].isObject && packet.blips[i].entityId == networkObject->m_nObjectId;
+        if (!keep)
+            ClearRemoteBlip(networkObject->m_nBlipHandle, networkObject->m_bMissionBlip);
+    }
 
     // create/update the rest (blips made by adapted missions via Coop.* commands are left alone)
     for (int i = 0; i < packet.count; i++)
     {
         const auto& b = packet.blips[i];
-        if (b.isVehicle)
+        if (b.isObject)
+        {
+            CNetworkObject* networkObject = CNetworkObjectManager::GetObject(b.entityId);
+            if (!networkObject || !networkObject->m_pObject || networkObject->m_bSyncing)
+                continue;
+            if (networkObject->m_nBlipHandle == -1)
+            {
+                networkObject->m_nBlipHandle = CRadar::SetEntityBlip(
+                    BLIP_OBJECT, CPools::GetObjectRef(networkObject->m_pObject), 0, static_cast<eBlipDisplay>(b.display));
+                networkObject->m_bMissionBlip = true;
+            }
+            if (networkObject->m_bMissionBlip)
+                SetupBlip(networkObject->m_nBlipHandle, b);
+        }
+        else if (b.isVehicle)
         {
             CNetworkVehicle* networkVehicle = CNetworkVehicleManager::GetVehicle(b.entityId);
             if (!networkVehicle || !networkVehicle->m_pVehicle)
