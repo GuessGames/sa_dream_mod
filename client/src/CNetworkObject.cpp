@@ -358,6 +358,35 @@ void CNetworkObject::GetDamageState(CObject* object, Packets::Objects::SObjectDa
     state.bHasExploded = object->m_nObjectFlags.bIsExploded;
 }
 
+CVector CNetworkObject::GetMapPosition(CObject* object)
+{
+    if (object->m_pDummyObject != nullptr)
+    {
+        return object->m_pDummyObject->GetPosition();
+    }
+    return object->GetPosition();
+}
+
+CObject* CNetworkObject::FindMapObject(int modelid, const CVector& mapPos)
+{
+    CObject* best = nullptr;
+    float bestDist = 1.0f;
+    for (int i = 0; i < CPools::ms_pObjectPool->m_nSize; i++)
+    {
+        CObject* object = CPools::ms_pObjectPool->GetAt(i);
+        if (object == nullptr || object->m_nModelIndex != modelid || object->m_nObjectType != 1 /* OBJECT_GAME */)
+            continue;
+
+        float dist = DistanceBetweenPoints(GetMapPosition(object), mapPos);
+        if (dist < bestDist)
+        {
+            best = object;
+            bestDist = dist;
+        }
+    }
+    return best;
+}
+
 void CNetworkObject::ApplyDamageState(CObject* object, const Packets::Objects::SObjectDamageState& state)
 {
     // the damaged model is picked when the RW object is created

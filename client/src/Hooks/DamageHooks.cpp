@@ -38,6 +38,50 @@ static void __fastcall CObject__ObjectDamage_Hook(
 {
     CNetworkObject* networkObject = CNetworkObjectManager::GetObject(This);
 
+    // a map object hit by our own player: apply it here and replay the hit on the others
+    if (!CNetworkObject::ms_bApplyingNetworkDamage && CNetwork::m_bAuthenticated && networkObject == nullptr &&
+        This->m_nObjectType == 1 /* OBJECT_GAME */ && damager != nullptr &&
+        (damager == FindPlayerPed(0) || damager == FindPlayerVehicle(0, false)))
+    {
+        Packets::Objects::SObjectDamageState oldState{};
+        CNetworkObject::GetDamageState(This, oldState);
+        int modelid = This->m_nModelIndex;
+        CVector mapPos = CNetworkObject::GetMapPosition(This);
+        int ref = CPools::GetObjectRef(This);
+
+        plugin::CallMethod<0x5A0D90, CObject*, float, CVector*, CVector*, CEntity*, eWeaponType>(
+            This, damage, colPos, colNormal, damager, weapon);
+
+        // it may be gone (smashed into pieces): then the others only need to smash theirs too
+        Packets::Objects::WorldObjectDamage packet{};
+        bool bAlive = CPools::GetObject(ref) == This;
+        if (bAlive)
+        {
+            CNetworkObject::GetDamageState(This, packet.state);
+            if (packet.state == oldState)
+                return;
+        }
+        else
+        {
+            packet.state = oldState;
+            packet.state.bHasBeenShattered = true;
+        }
+
+        packet.modelid = (uint16_t)modelid;
+        packet.mapPos = mapPos;
+        packet.damage = damage;
+        packet.weapon = (uint8_t)weapon;
+        packet.bInVehicle = damager->m_nType == ENTITY_TYPE_VEHICLE;
+        packet.bHasColPos = colPos != nullptr;
+        if (colPos != nullptr)
+            packet.colPos = *colPos;
+        packet.bHasColNormal = colNormal != nullptr;
+        if (colNormal != nullptr)
+            packet.colNormal = *colNormal;
+        GetPacketFactory().Send(packet);
+        return;
+    }
+
     if (CNetworkObject::ms_bApplyingNetworkDamage || !CNetwork::m_bAuthenticated || networkObject == nullptr)
     {
         plugin::CallMethod<0x5A0D90, CObject*, float, CVector*, CVector*, CEntity*, eWeaponType>(

@@ -253,4 +253,47 @@ private:
         return true;
     }
 };
+// a map object (boxes, fences, lamp posts... created by every PC itself from the map) damaged by the sender's
+// own player; found on the others by model + map position, the hit is replayed there for the same result
+class WorldObjectDamage : public Packet
+{
+    DEFINE_PACKET_TYPE(WorldObjectDamage, ePacketType::WORLD_OBJECT_DAMAGE, ePacketChannel::EVENT);
+
+public:
+    SenderPlayerId senderPlayerid{};
+    uint16_t modelid = 0;
+    CVector mapPos{};  // the position of its map dummy (or its own when it has none)
+    float damage = 0.0f;
+    uint8_t weapon = 0;
+    bool bInVehicle = false;
+    bool bHasColPos = false;
+    WorldPositionCompressed colPos{};
+    bool bHasColNormal = false;
+    CVector colNormal{};
+    SObjectDamageState state{};
+
+private:
+    template <typename Stream>
+    bool Serialize(Stream& stream)
+    {
+        serialize_object(stream, senderPlayerid);
+        serialize_uint16(stream, modelid);
+        serialize_vector(stream, mapPos);
+        serialize_float(stream, damage);
+        serialize_uint8(stream, weapon);
+        serialize_bool(stream, bInVehicle);
+        serialize_bool(stream, bHasColPos);
+        if (bHasColPos)
+        {
+            serialize_object(stream, colPos);
+        }
+        serialize_bool(stream, bHasColNormal);
+        if (bHasColNormal)
+        {
+            serialize_vector(stream, colNormal);
+        }
+        serialize_object(stream, state);
+        return true;
+    }
+};
 }  // namespace Packets::Objects

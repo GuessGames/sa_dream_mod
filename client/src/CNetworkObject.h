@@ -47,4 +47,7 @@ public:
     static bool IsAttachedToNetworkEntity(CObject* object);
     static void GetDamageState(CObject* object, Packets::Objects::SObjectDamageState& state);
     static void ApplyDamageState(CObject* object, const Packets::Objects::SObjectDamageState& state);
+    // map objects: the same on every PC (where the map placed it, even if it was pushed since)
+    static CVector GetMapPosition(CObject* object);
+    static CObject* FindMapObject(int modelid, const CVector& mapPos);
 };

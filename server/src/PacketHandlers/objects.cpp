@@ -79,6 +79,13 @@ PACKET_HANDLER(ePacketType::OBJECT_DAMAGE_REQUEST, Packets::Objects::ObjectDamag
     }
 }
 
+PACKET_HANDLER(ePacketType::WORLD_OBJECT_DAMAGE, Packets::Objects::WorldObjectDamage* pWorldObjectDamage,
+    CNetworkPlayer* pNetworkPlayer)
+{
+    pWorldObjectDamage->senderPlayerid.value = pNetworkPlayer->m_iPlayerId;
+    GetPacketFactory().SendToAll(*pWorldObjectDamage, pNetworkPlayer);
+}
+
 PACKET_HANDLER(
     ePacketType::OBJECT_DAMAGE, Packets::Objects::ObjectDamage* pObjectDamage, CNetworkPlayer* pNetworkPlayer)
 {

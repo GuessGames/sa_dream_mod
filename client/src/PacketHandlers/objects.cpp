@@ -94,6 +94,41 @@ PACKET_HANDLER(ePacketType::OBJECT_DAMAGE_REQUEST, Packets::Objects::ObjectDamag
     pNetworkObject->SendDamageIfChanged(oldState, pObjectDamageRequest->damage, &colPos, &colNormal, pDamager, weapon);
 }
 
+PACKET_HANDLER(ePacketType::WORLD_OBJECT_DAMAGE, Packets::Objects::WorldObjectDamage* pWorldObjectDamage)
+{
+    // not streamed in here: nothing to show, the map recreates it intact anyway
+    CObject* pObject = CNetworkObject::FindMapObject(pWorldObjectDamage->modelid, pWorldObjectDamage->mapPos);
+    if (pObject == nullptr || !pObject->m_bIsVisible || pObject->m_pRwObject == nullptr)
+    {
+        return;
+    }
+
+    CEntity* pDamager = nullptr;
+    CNetworkPlayer* pNetworkPlayer = CNetworkPlayerManager::GetPlayer(pWorldObjectDamage->senderPlayerid);
+    if (pNetworkPlayer != nullptr && pNetworkPlayer->m_pPed != nullptr && pNetworkPlayer->m_pPed->IsVTableValid())
+    {
+        pDamager = pNetworkPlayer->m_pPed;
+        if (pWorldObjectDamage->bInVehicle && pNetworkPlayer->m_pPed->m_pVehicle != nullptr)
+        {
+            pDamager = pNetworkPlayer->m_pPed->m_pVehicle;
+        }
+    }
+
+    CVector colPos = pWorldObjectDamage->bHasColPos ? (CVector)pWorldObjectDamage->colPos : pObject->GetPosition();
+    CVector colNormal =
+        pWorldObjectDamage->bHasColNormal ? pWorldObjectDamage->colNormal : CVector(0.0f, 0.0f, 1.0f);
+
+    int ref = CPools::GetObjectRef(pObject);
+    CNetworkObject::CallObjectDamage(pObject, pWorldObjectDamage->damage, &colPos, &colNormal, pDamager,
+        (eWeaponType)pWorldObjectDamage->weapon, true);
+
+    // the replayed hit may roll differently (or be too weak here): take the sender's result
+    if (CPools::GetObject(ref) == pObject && !pWorldObjectDamage->state.bHasBeenShattered)
+    {
+        CNetworkObject::ApplyDamageState(pObject, pWorldObjectDamage->state);
+    }
+}
+
 PACKET_HANDLER(ePacketType::OBJECT_DAMAGE, Packets::Objects::ObjectDamage* pObjectDamage)
 {
     CNetworkObject* pNetworkObject = CNetworkObjectManager::GetObject(pObjectDamage->objectid);
