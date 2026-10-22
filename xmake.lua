@@ -159,6 +159,34 @@ target("server", function ()
     end
 end)
 
+-- fake players for load tests: tools/botclient (no game needed)
+target("botclient", function ()
+    set_kind("binary")
+
+    set_arch("x86")
+    set_languages("c++17")
+
+    add_files("tools/botclient/src/*.cpp")
+
+    add_includedirs(
+        "tools/botclient/src/",
+        "third_party/plugin-sdk/shared",
+        "third_party/plugin-sdk/shared/game",
+        "third_party/plugin-sdk/plugin_sa",
+        "third_party/plugin-sdk/plugin_sa/game_sa"
+    )
+    add_includedirs("shared", "third_party")
+
+    set_pcxxheader("tools/botclient/src/stdafx.h")
+
+    -- talks to the server like the game client does
+    add_defines("COOP_CLIENT", "NOMINMAX", "GTASA", "_CRT_SECURE_NO_WARNINGS", "WIN32", "_CONSOLE")
+    set_optimize("fastest")
+
+    add_deps("enet")
+    add_syslinks("kernel32", "ws2_32", "winmm")
+end)
+
 target("proxy", function ()
     set_kind("shared")
 

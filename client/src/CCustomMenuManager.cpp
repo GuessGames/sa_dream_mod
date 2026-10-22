@@ -265,6 +265,7 @@ void __fastcall CMenuManager__DrawStandardMenu_Hook(CMenuManager* This, SKIP_EDX
 
 	// -autoconnect (used by the manager's test mode): start the game = connect with the saved nickname/ip
 	static uint32_t autoConnectSeenAt = 0;
+	static uint32_t autoNewGameAt = 0;
 	if (CCore::ms_bAutoConnect && This->m_bGameNotLoaded)
 	{
 		if (!autoConnectSeenAt)
@@ -275,7 +276,16 @@ void __fastcall CMenuManager__DrawStandardMenu_Hook(CMenuManager* This, SKIP_EDX
 			CCore::ms_bAutoConnect = false;
 			logger::info("autoconnect to %s:%d as %s", CNetwork::m_IpAddress, CNetwork::m_nPort, CLocalPlayer::m_Name);
 			This->SwitchToNewScreen(1);
+			autoNewGameAt = GetTickCount();
 		}
+	}
+
+	// then press "New game" too: nobody sits in front of the test windows
+	if (autoNewGameAt && GetTickCount() - autoNewGameAt > 1000 && This->m_bGameNotLoaded && This->m_nCurrentMenuPage == 1)
+	{
+		autoNewGameAt = 0;
+		logger::info("autoconnect: starting a new game");
+		This->DoSettingsBeforeStartingAGame();
 	}
 
 	This->DrawStandardMenu(a1);
