@@ -146,6 +146,42 @@ private:
     }
 };
 
+// cutscene skip voting (port of upstream e1765f3): a non-host's vote goes to the host,
+// the host counts them and skips when every active player voted
+class CutsceneSkipVote : public Packet
+{
+    DEFINE_PACKET_TYPE(CutsceneSkipVote, ePacketType::CUTSCENE_SKIP_VOTE, ePacketChannel::SCRIPT);
+
+public:
+    SenderPlayerId senderPlayerid{};
+
+private:
+    template <typename Stream>
+    bool Serialize(Stream& stream)
+    {
+        serialize_object(stream, senderPlayerid);
+        return true;
+    }
+};
+
+class CutsceneSkipVoteState : public Packet
+{
+    DEFINE_PACKET_TYPE(CutsceneSkipVoteState, ePacketType::CUTSCENE_SKIP_VOTE_STATE, ePacketChannel::SCRIPT);
+
+public:
+    int votes = 0;
+    int voters = 0;
+
+private:
+    template <typename Stream>
+    bool Serialize(Stream& stream)
+    {
+        serialize_int(stream, votes, 0, Config::MAX_SERVER_PLAYERS);
+        serialize_int(stream, voters, 0, Config::MAX_SERVER_PLAYERS);
+        return true;
+    }
+};
+
 class SkipCutscene : public Packet
 {
     DEFINE_PACKET_TYPE(SkipCutscene, ePacketType::SKIP_CUTSCENE, ePacketChannel::SCRIPT);

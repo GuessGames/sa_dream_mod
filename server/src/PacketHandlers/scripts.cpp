@@ -64,6 +64,29 @@ PACKET_HANDLER(ePacketType::SKIP_CUTSCENE, Packets::Scripts::SkipCutscene* pSkip
 }
 #endif
 
+PACKET_HANDLER(ePacketType::CUTSCENE_SKIP_VOTE, Packets::Scripts::CutsceneSkipVote* pCutsceneSkipVote,
+    CNetworkPlayer* pNetworkPlayer)
+{
+    CNetworkPlayer* pHost = CNetworkPlayerManager::GetHost();
+    if (pHost == nullptr || pHost == pNetworkPlayer)
+    {
+        return;
+    }
+
+    logger::info("[mission] %s votes to skip the cutscene", pNetworkPlayer->GetName().c_str());
+    pCutsceneSkipVote->senderPlayerid.value = pNetworkPlayer->m_iPlayerId;
+    GetPacketFactory().Send(*pCutsceneSkipVote, pHost);
+}
+
+PACKET_HANDLER(ePacketType::CUTSCENE_SKIP_VOTE_STATE, Packets::Scripts::CutsceneSkipVoteState* pCutsceneSkipVoteState,
+    CNetworkPlayer* pNetworkPlayer)
+{
+    if (pNetworkPlayer->m_bIsHost)
+    {
+        GetPacketFactory().SendToAll(*pCutsceneSkipVoteState, pNetworkPlayer);
+    }
+}
+
 PACKET_HANDLER(ePacketType::PLAY_MISSION_AUDIO, Packets::Scripts::PlayMissionAudio* pPlayMissionAudio,
     CNetworkPlayer* pNetworkPlayer)
 {

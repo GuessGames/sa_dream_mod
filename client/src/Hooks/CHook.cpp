@@ -16,6 +16,7 @@
 #include "ShadowHooks.h"
 #include "CPickupSync.h"
 #include "CMissionSync.h"
+#include "CCutsceneSkipVote.h"
 
 void CHook::Init()
 {
@@ -37,4 +38,5 @@ void CHook::Init()
     ShadowHooks::InjectHooks();
     CPickupSync::InjectHooks();
     CMissionSync::InjectHooks();
+    CCutsceneSkipVote::InjectHooks();
 }
