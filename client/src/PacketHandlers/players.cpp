@@ -293,6 +293,30 @@ PACKET_HANDLER(ePacketType::PLAYER_PAUSE_STATE, Packets::Players::PlayerPauseSta
 PACKET_HANDLER(ePacketType::PLAYER_BRING, Packets::Players::PlayerBring* pBring)
 {
     auto pFrom = CNetworkPlayerManager::GetPlayer(pBring->playerid);
+    CPlayerPed* pLocalPed = FindPlayerPed(0);
+
+    if (pBring->bMission)
+    {
+        if (!pLocalPed || pLocalPed->m_fHealth <= 0.0f)
+            return;
+
+        // our car would land on the host's: come on foot like the host's mission expects
+        if (pLocalPed->m_nPedFlags.bInVehicle && pLocalPed->m_pVehicle)
+        {
+            Command<Commands::WARP_CHAR_FROM_CAR_TO_COORD>(
+                CPools::GetPedRef(pLocalPed), pBring->pos.x, pBring->pos.y, pBring->pos.z);
+        }
+    }
+
     CAdminMenu::TeleportLocalPlayer(pBring->pos, pBring->interior);
+
+    if (pBring->bMission)
+    {
+        pLocalPed->m_fCurrentRotation = pLocalPed->m_fAimingRotation = pBring->heading;
+        pLocalPed->SetHeading(pBring->heading);
+        logger::info("[mission] teleported to the host (%.1f %.1f %.1f) area %d", pBring->pos.x, pBring->pos.y,
+            pBring->pos.z, pBring->interior);
+        return;
+    }
     CChat::AddMessage("{ffff00}[SA Dream Mod]{ffffff} " + (pFrom ? pFrom->GetName() : std::string("Someone")) + " teleported you to them");
 }

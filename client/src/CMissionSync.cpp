@@ -2,6 +2,10 @@
 #include "CMissionSync.h"
 #include "COpCodeSync.h"
 #include <network/packets/blips.h>
+#include <CPedPlacement.h>
+#include <CCutsceneMgr.h>
+#include <CEntryExitManager.h>
+#include <CEntryExitTransitionSync.h>
 
 namespace
 {
@@ -173,8 +177,117 @@ void SetupBlip(int handle, const Packets::Blips::_MissionEntityBlip& b)
 }
 }  // namespace
 
+// ---------------------------------------------------------------- teleports of the host during a mission
+// Missions move the player with SET_CHAR_COORDINATES / SET_CAR_COORDINATES / WARP_* / SET_AREA_VISIBLE,
+// which only the host runs, so the others stayed behind; the admin menu teleport too. Any jump of the host that
+// its speed can't explain is such a teleport: the others are brought next to the host. Enex doors are left out,
+// the others walk through them themselves.
+namespace
+{
+constexpr float TELEPORT_MIN_DIST = 30.0f;  // smaller moves are placements, the others are close anyway
+constexpr float BRING_SKIP_DIST = 15.0f;    // already near the new position (adapted missions bring themselves)
+
+constexpr uint32_t BRING_SETTLE_MS = 500;    // missions often move the host twice in a row (into an interior, out)
+
+CVector g_vecLastHostPos{};
+int g_nLastArea = -1;
+bool g_bBringPending = false;
+uint32_t g_nLastJumpAt = 0;
+
+bool IsHostOnMission() { return CNetwork::m_bAuthenticated && CLocalPlayer::m_bIsHost && CTheScripts::IsPlayerOnAMission(); }
+
+CVector FindSpotNearHost(const CVector& hostPos, float heading, int index)
+{
+    // behind and beside the host, a wider ring for more players
+    float dist = 2.0f + 1.0f * (index / 6);
+    float angle = heading + 3.14159f + ((index % 6) - 2.5f) * 0.6f;
+    CVector spot = hostPos + CVector(-sinf(angle), cosf(angle), 0.0f) * dist;
+    if (CPedPlacement::FindZCoorForPed(&spot) &&
+        !CWorld::TestSphereAgainstWorld(spot, 0.35f, nullptr, true, true, true, true, true, false) &&
+        CWorld::GetIsLineOfSightClear(hostPos, spot, true, true, false, true, true, false, false))
+    {
+        return spot;
+    }
+    return hostPos;
+}
+
+void BringPlayersToHost()
+{
+    CPlayerPed* hostPed = FindPlayerPed(0);
+    if (!hostPed)
+        return;
+
+    CVector hostPos = hostPed->GetPosition();
+    float heading = hostPed->m_fCurrentRotation;
+    int index = 0;
+    for (CNetworkPlayer* player : CNetworkPlayerManager::m_pPlayers)
+    {
+        if (!player->m_pPed || !player->m_pPed->IsVTableValid())
+            continue;
+        if (player->m_pPed->m_nAreaCode == CGame::currArea &&
+            DistanceBetweenPoints(player->m_pPed->GetPosition(), hostPos) < BRING_SKIP_DIST)
+            continue;
+
+        Packets::Players::PlayerBring packet{};
+        packet.targetid = player->m_iPlayerId;
+        packet.pos = FindSpotNearHost(hostPos, heading, index++);
+        packet.interior = CGame::currArea;
+        packet.heading = heading;
+        packet.bMission = true;
+        GetPacketFactory().Send(packet);
+        logger::info("[mission] host teleported, bringing %s to (%.1f %.1f %.1f) area %d", player->GetName().c_str(),
+            packet.pos.x, packet.pos.y, packet.pos.z, packet.interior);
+    }
+}
+
+bool IsInEnexTransition()
+{
+    return CEntryExitManager::ms_exitEnterState != 0 || CEntryExitTransitionSync::IsLocalTransitionActive();
+}
+
+void DetectHostTeleport()
+{
+    CPlayerPed* ped = FindPlayerPed(0);
+    // a respawn after wasted/busted is not a mission teleport
+    if (!ped || !IsHostOnMission() || CWorld::Players[0].m_nPlayerState != PLAYERSTATE_PLAYING)
+    {
+        g_bBringPending = false;
+        g_nLastArea = -1;
+        return;
+    }
+
+    CVector pos = ped->GetPosition();
+    if (g_nLastArea != -1 && !IsInEnexTransition())
+    {
+        // the farthest the host could have moved on his own this frame
+        CPhysical* mover = ped->m_nPedFlags.bInVehicle && ped->m_pVehicle ? (CPhysical*)ped->m_pVehicle : (CPhysical*)ped;
+        float ownMove = mover->m_vecMoveSpeed.Magnitude() * CTimer::ms_fTimeStep * 2.0f;
+        float jump = DistanceBetweenPoints(pos, g_vecLastHostPos);
+        // an area change alone is a cutscene switching the visible area; interiors are far away from the map
+        if (jump > TELEPORT_MIN_DIST + ownMove)
+        {
+            logger::info("[mission] host jumped %.0f m (area %d -> %d)", jump, g_nLastArea, (int)CGame::currArea);
+            g_bBringPending = true;
+            g_nLastJumpAt = GetTickCount();
+        }
+    }
+    g_vecLastHostPos = pos;
+    g_nLastArea = CGame::currArea;
+
+    // during a cutscene, a fade or right after a jump the script is still placing the host:
+    // bring them once, to where he ends up
+    if (g_bBringPending && !CCutsceneMgr::ms_running && !TheCamera.m_bFading &&
+        GetTickCount() - g_nLastJumpAt > BRING_SETTLE_MS)
+    {
+        g_bBringPending = false;
+        BringPlayersToHost();
+    }
+}
+}  // namespace
 void CMissionSync::InjectHooks()
 {
+    Events::gameProcessEvent.after += DetectHostTeleport;
+
     const int callers[] = {0x467989, 0x467A96, 0x467FA0, 0x46805E, 0x4801D7, 0x48704F, 0x4873A4, 0x4876B2, 0x4879B2,
         0x487CA9, 0x487F13, 0x488E6A, 0x489111, 0x489378};
     for (int address : callers)

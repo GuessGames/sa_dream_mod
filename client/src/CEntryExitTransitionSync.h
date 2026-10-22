@@ -15,6 +15,8 @@ public:
     static void OnTransitionFinished(CEntryExit* pEntryExit, CPed* pPed);
     static void Receive(const Packets::Players::EnExTransition& packet);
     static void Process();
+    // the local player is walking through an enex door
+    static bool IsLocalTransitionActive() { return ms_pLocalAnimatedTransition != nullptr; }
 
 private:
     static inline CEntryExit* ms_pLocalAnimatedTransition = nullptr;

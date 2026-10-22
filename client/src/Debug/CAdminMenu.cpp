@@ -5,6 +5,7 @@
 #include "CPacketTimeline.h"
 #include <imgui.h>
 #include <CCheat.h>
+#include <CCutsceneMgr.h>
 #include <CDebugVehicleSpawner.h>
 #include <fstream>
 #include <sstream>
@@ -360,6 +361,16 @@ void CAdminMenu::Process()
         int id = CCore::ms_nTestMission;
         CCore::ms_nTestMission = -1;
         LaunchMission(id);
+    }
+
+    static uint32_t missionActiveSince = 0;
+    missionActiveSince = IsMissionActive() ? (missionActiveSince ? missionActiveSince : GetTickCount()) : 0;
+    if (CCore::ms_bTestTeleport && CLocalPlayer::m_bIsHost && missionActiveSince && GetTickCount() - missionActiveSince > 10000 &&
+        !CCutsceneMgr::ms_running)
+    {
+        CCore::ms_bTestTeleport = false;
+        logger::info("[admin] -testteleport: teleporting the host");
+        Teleport(CVector(-2026.0f, 156.0f, 29.0f), true);  // San Fierro, Doherty garage
     }
 
     if (bGodMode)

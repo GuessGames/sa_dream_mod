@@ -410,7 +410,8 @@ public:
     }
 };
 
-// admin menu "bring": the sender asks another player to teleport next to him
+// admin menu "bring": the sender asks another player to teleport next to him;
+// also sent by the host when its mission teleported the host (bMission)
 class PlayerBring : public Packet
 {
     DEFINE_PACKET_TYPE(PlayerBring, ePacketType::PLAYER_BRING, ePacketChannel::EVENT);
@@ -420,6 +421,8 @@ public:
     int targetid = 0;
     CVector pos{};
     int interior = 0;
+    bool bMission = false;  // come on foot and face like the host
+    float heading = 0.0f;
 
     template <typename Stream>
     bool Serialize(Stream& stream)
@@ -428,6 +431,11 @@ public:
         serialize_int(stream, targetid, 0, Config::MAX_SERVER_PLAYERS - 1);
         serialize_vector(stream, pos);
         serialize_int(stream, interior, 0, 255);
+        serialize_bool(stream, bMission);
+        if (bMission)
+        {
+            serialize_float(stream, heading);
+        }
         return true;
     }
 };

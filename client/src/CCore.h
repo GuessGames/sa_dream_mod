@@ -17,6 +17,8 @@ public:
 	static inline int ms_nTestMission = -1;
 	// -testoutfit: after connecting this window wears other clothes and fat 995 (automated clothes/cutscene tests)
 	static inline bool ms_bTestOutfit = false;
+	// -testteleport: the host teleports itself 10 s into a mission (tests that the others are brought along)
+	static inline bool ms_bTestTeleport = false;
 
 	static semver_t Version;
 	static inline injector::game_version_manager gvm{};

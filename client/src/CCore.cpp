@@ -68,6 +68,8 @@ void CCore::Init()
     ms_bAutoConnect = strstr(cmd, "-autoconnect") != nullptr;
     if (strstr(cmd, "-testoutfit"))
         ms_bTestOutfit = true;
+    if (strstr(cmd, "-testteleport"))
+        ms_bTestTeleport = true;
     if (const char* testMission = strstr(cmd, "-testmission "))
     {
         ms_nTestMission = atoi(testMission + 13);
