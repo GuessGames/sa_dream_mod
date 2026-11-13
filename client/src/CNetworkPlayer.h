@@ -43,6 +43,7 @@ public:
 	void CreatePed(int id, CVector position);
 	void DestroyPed();
 	void Respawn();
+	void RestoreDeletedPed();
 	int GetInternalId();
 	std::string GetName();
 	char GetWeaponSkill(eWeaponType weaponType);

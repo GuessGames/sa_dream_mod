@@ -33,6 +33,8 @@ void CNetworkPlayer::CreatePed(int id, CVector position)
     plugin::Command<Commands::GET_PLAYER_CHAR>(playerId, &actorId);
 
     m_pPed = (CPlayerPed*)CPools::GetPed(actorId);
+    // the game clears m_pPed when it deletes the ped itself (upstream 5f80c57)
+    m_pPed->RegisterReference((CEntity**)&m_pPed);
 
     m_pPed->SetOrientation(0.0f, 0.0f, 0.0f);
 
@@ -54,6 +56,8 @@ void CNetworkPlayer::DestroyPed()
         plugin::Command<Commands::WARP_CHAR_FROM_CAR_TO_COORD>(CPools::GetPedRef(m_pPed), 0.f, 0.f, 0.f);
     }
 
+    m_pPed->CleanUpOldReference((CEntity**)&m_pPed);
+
     uintptr_t pedPtr = (uintptr_t)m_pPed;
     if (m_pPed->IsVTableValid())
     {
@@ -68,6 +72,16 @@ void CNetworkPlayer::DestroyPed()
 			call[ebx]  // call destructor
         }
     }
+    m_pPed = nullptr;
+}
+
+void CNetworkPlayer::RestoreDeletedPed()
+{
+    if (m_pPed)
+        return;
+
+    logger::warn("[crashfix] the game deleted the ped of player %d, creating it again", m_iPlayerId);
+    this->CreatePed(m_iPlayerId, m_onFootSnapshotInterpolated.vecPos);
 }
 
 void CNetworkPlayer::Respawn()

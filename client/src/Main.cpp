@@ -63,6 +63,8 @@ public:
                 bBeenConnected = true;
 
                 CServerTime::Process();
+                for (auto* pNetworkPlayer : CNetworkPlayerManager::m_pPlayers)
+                    pNetworkPlayer->RestoreDeletedPed();
                 CNetwork::ProcessReceive();
                 GetPacketBuffer().Process();
 
